@@ -1,0 +1,49 @@
+rules:
+  - id: dangerous-exec
+    pattern: exec($X)
+    message: "Avoid using exec() - security risk"
+    languages: [python]
+    severity: ERROR
+
+  - id: dangerous-eval
+    pattern: eval($X)
+    message: "Avoid using eval() - security risk"
+    languages: [python]
+    severity: ERROR
+
+  - id: hardcoded-password
+    patterns:
+      - pattern: password = "$X"
+      - pattern: passwd = "$X"
+      - pattern: api_key = "$X"
+    message: "Hardcoded secret detected"
+    languages: [python]
+    severity: ERROR
+
+  - id: debug-breakpoint
+    pattern: breakpoint()
+    message: "Debug breakpoint left in code"
+    languages: [python]
+    severity: WARNING
+
+  - id: print-statement
+    pattern: print($X)
+    message: "Print statement in production code"
+    languages: [python]
+    severity: INFO
+
+  - id: bare-except
+    pattern: |
+        try:
+            ...
+        except:
+            ...
+    message: "Bare except catches all exceptions including SystemExit"
+    languages: [python]
+    severity: WARNING
+
+  - id: sql-injection-risk
+    pattern: execute($QUERY)
+    message: "Potential SQL injection - use parameterized queries"
+    languages: [python]
+    severity: ERROR
