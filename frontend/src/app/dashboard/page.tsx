@@ -155,11 +155,15 @@ function StudentDashboard({ data, token }: { data: any; token: string }) {
     setStarting(testId);
     try {
       const res = await api.startAttempt(testId, token);
-      router.push(`/tests/${testId}/attempt`);
+      router.push(`/tests/${res.attempt_id}/attempt`);
     } catch (e: any) {
       alert(e.message || "Ошибка при запуске теста");
     }
     setStarting(null);
+  };
+
+  const continueTest = (attemptId: string) => {
+    router.push(`/tests/${attemptId}/attempt`);
   };
 
   return (
@@ -179,10 +183,16 @@ function StudentDashboard({ data, token }: { data: any; token: string }) {
                   </div>
                 </div>
                 <div>
-                  {t.attempt_status ? (
-                    <span className={`badge ${t.attempt_status === "COMPLETED" ? "badge-success" : "badge-warning"}`}>
-                      {t.attempt_status === "COMPLETED" ? "Пройден" : "В процессе"}
-                    </span>
+                  {t.attempt_status === "COMPLETED" ? (
+                    <span className="badge badge-success">Пройден</span>
+                  ) : t.attempt_id ? (
+                    <button
+                      className="btn btn-primary"
+                      style={{ background: "var(--success)" }}
+                      onClick={() => continueTest(t.attempt_id)}
+                    >
+                      Продолжить
+                    </button>
                   ) : (
                     <button
                       className="btn btn-primary"
