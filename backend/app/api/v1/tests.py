@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import User, Test, TestTask, TestAssignment, Task, Theme, TutorStudent
+from app.models import User, Test, TestTask, TestAssignment, Task, Theme, TutorStudent, Attempt
 from app.utils.deps import require_role
 
 router = APIRouter(prefix="/tests", tags=["Tests"])
@@ -110,11 +110,14 @@ async def list_tests(
         if max_tasks is not None and task_count > max_tasks:
             continue
 
-        # Get assignments
+        # Get assignments with eager-loaded student and profile
         assign_result = await db.execute(
             select(TestAssignment)
             .where(TestAssignment.test_id == t.id)
-            .options(selectinload(TestAssignment.student))
+            .options(
+                selectinload(TestAssignment.student)
+                .selectinload(User.profile)
+            )
         )
         assignments = assign_result.scalars().all()
 
@@ -201,11 +204,14 @@ async def get_test(
     )
     rows = tasks_result.all()
 
-    # Get assignments with status
+    # Get assignments with eager-loaded student and profile
     assign_result = await db.execute(
         select(TestAssignment)
         .where(TestAssignment.test_id == test_id)
-        .options(selectinload(TestAssignment.student))
+        .options(
+            selectinload(TestAssignment.student)
+            .selectinload(User.profile)
+        )
     )
     assignments = assign_result.scalars().all()
     assignment_list = []
