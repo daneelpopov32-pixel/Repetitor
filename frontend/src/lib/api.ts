@@ -37,6 +37,8 @@ export const api = {
     const q = new URLSearchParams(params);
     return request<any[]>(`/tests?${q.toString()}`, { token });
   },
+  getStudentTests: (token: string) =>
+    request<any[]>("/tests/student", { token }),
   getTest: (testId: string, token: string) => request<any>(`/tests/${testId}`, { token }),
   deleteTest: (testId: string, token: string) =>
     request<any>(`/tests/${testId}`, { method: "DELETE", token }),

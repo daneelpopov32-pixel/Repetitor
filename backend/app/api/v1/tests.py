@@ -182,6 +182,52 @@ async def list_tests(
     return out
 
 
+@router.get("/student")
+async def get_student_tests(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("STUDENT")),
+):
+    """Get tests assigned to the current student."""
+    # Get assignments for this student
+    assign_result = await db.execute(
+        select(TestAssignment, Test)
+        .join(Test, Test.id == TestAssignment.test_id)
+        .where(TestAssignment.student_id == user.id)
+        .order_by(TestAssignment.assigned_at.desc())
+    )
+    rows = assign_result.all()
+
+    out = []
+    for assignment, test in rows:
+        # Check if student has an attempt
+        attempt_result = await db.execute(
+            select(Attempt).where(
+                Attempt.test_id == test.id,
+                Attempt.student_id == user.id,
+            )
+        )
+        attempt = attempt_result.scalars().first()
+
+        # Get task count
+        task_count_result = await db.execute(
+            select(func.count(TestTask.task_id)).where(TestTask.test_id == test.id)
+        )
+        task_count = task_count_result.scalar() or 0
+
+        out.append({
+            "test_id": str(test.id),
+            "title": test.title,
+            "time_limit_minutes": test.time_limit_minutes,
+            "tasks_count": task_count,
+            "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+            "assignment_status": assignment.status,
+            "attempt_id": str(attempt.id) if attempt else None,
+            "attempt_status": attempt.status if attempt else None,
+        })
+
+    return out
+
+
 @router.get("/{test_id}")
 async def get_test(
     test_id: UUID,

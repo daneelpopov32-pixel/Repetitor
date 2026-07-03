@@ -33,8 +33,11 @@ export default function DashboardPage() {
 
   const loadStudentDashboard = async () => {
     try {
-      const dash = await api.getDashboard(auth.userId!, auth.token!);
-      setData({ dashboard: dash });
+      const [dash, assignedTests] = await Promise.all([
+        api.getDashboard(auth.userId!, auth.token!),
+        api.getStudentTests(auth.token!),
+      ]);
+      setData({ dashboard: dash, assignedTests });
     } catch {}
   };
 
@@ -143,13 +146,60 @@ function TutorDashboard({ data, token }: { data: any; token: string }) {
 }
 
 function StudentDashboard({ data, token }: { data: any; token: string }) {
+  const router = useRouter();
+  const [starting, setStarting] = useState<string | null>(null);
   const dash = data.dashboard;
-  if (!dash || dash.total_tests === 0) {
-    return <div className="empty-state">Пока нет данных. Пройдите первый тест!</div>;
-  }
+  const assignedTests = data.assignedTests || [];
+
+  const startTest = async (testId: string) => {
+    setStarting(testId);
+    try {
+      const res = await api.startAttempt(testId, token);
+      router.push(`/tests/${testId}/attempt`);
+    } catch (e: any) {
+      alert(e.message || "Ошибка при запуске теста");
+    }
+    setStarting(null);
+  };
 
   return (
     <div>
+      {/* Assigned Tests */}
+      {assignedTests.length > 0 && (
+        <div style={{ marginBottom: "2rem" }}>
+          <h2 style={{ marginBottom: "1rem" }}>Назначенные тесты</h2>
+          {assignedTests.map((t: any) => (
+            <div key={t.test_id} className="card" style={{ marginBottom: "0.75rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <strong>{t.title}</strong>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
+                    {t.tasks_count} заданий
+                    {t.time_limit_minutes ? ` | ${t.time_limit_minutes} мин` : ""}
+                  </div>
+                </div>
+                <div>
+                  {t.attempt_status ? (
+                    <span className={`badge ${t.attempt_status === "COMPLETED" ? "badge-success" : "badge-warning"}`}>
+                      {t.attempt_status === "COMPLETED" ? "Пройден" : "В процессе"}
+                    </span>
+                  ) : (
+                    <button
+                      className="btn btn-primary"
+                      disabled={starting === t.test_id}
+                      onClick={() => startTest(t.test_id)}
+                    >
+                      {starting === t.test_id ? "Запуск..." : "Начать тест"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Statistics */}
       <h2 style={{ marginBottom: "1rem" }}>Мой прогресс</h2>
       <div className="grid grid-2">
         <div className="card">
