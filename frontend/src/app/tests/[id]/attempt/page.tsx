@@ -5,8 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
-const OPTION_LETTERS = "АБВГДЕЖЗИК";
-
 export default function AttemptPage() {
   const { id: attemptId } = useParams();
   const { auth, hydrated } = useAuth();
@@ -18,6 +16,7 @@ export default function AttemptPage() {
   const [attempt, setAttempt] = useState<any>(null);
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const debounceRef = useRef<NodeJS.Timeout>(null);
   const timerRef = useRef<NodeJS.Timeout>(null);
 
@@ -68,9 +67,13 @@ export default function AttemptPage() {
 
   const saveAnswer = useCallback(
     async (taskId: string, value: string) => {
+      setSaveStatus("saving");
       try {
         await api.saveAnswer(attemptId as string, taskId, value, auth.token!);
-      } catch {}
+        setSaveStatus("saved");
+      } catch {
+        setSaveStatus("error");
+      }
     },
     [attemptId, auth.token]
   );
@@ -81,21 +84,44 @@ export default function AttemptPage() {
     debounceRef.current = setTimeout(() => saveAnswer(taskId, value), 1000);
   };
 
-  const handleMatchingAnswer = (taskId: string, stemIdx: number, value: string) => {
+  const handleGridInput = (taskId: string, index: number, value: string, maxIndex: number) => {
+    if (value && !/^[1-9]$/.test(value)) return;
     setAnswers((prev) => {
       const current = prev[taskId] || "";
-      const parts = current ? current.split(",") : [];
-      parts[stemIdx] = value;
-      const newAnswer = parts.join(",");
+      const parts = current.split("");
+      parts[index] = value;
+      const newAnswer = parts.join("").slice(0, maxIndex + 1);
       return { ...prev, [taskId]: newAnswer };
     });
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       const current = answers[taskId] || "";
-      const parts = current ? current.split(",") : [];
-      parts[stemIdx] = value;
-      saveAnswer(taskId, parts.join(","));
+      const parts = current.split("");
+      parts[index] = value;
+      saveAnswer(taskId, parts.join("").slice(0, maxIndex + 1));
     }, 1000);
+    if (value) {
+      const nextInput = document.querySelector(
+        `[data-task="${taskId}"][data-index="${index + 1}"]`
+      ) as HTMLInputElement;
+      if (nextInput) nextInput.focus();
+    }
+  };
+
+  const handleGridKeydown = (
+    e: React.KeyboardEvent,
+    taskId: string,
+    index: number
+  ) => {
+    if (e.key === "Backspace") {
+      const current = answers[taskId] || "";
+      if (!current[index] && index > 0) {
+        const prevInput = document.querySelector(
+          `[data-task="${taskId}"][data-index="${index - 1}"]`
+        ) as HTMLInputElement;
+        if (prevInput) prevInput.focus();
+      }
+    }
   };
 
   const handleSubmit = async () => {
@@ -112,9 +138,10 @@ export default function AttemptPage() {
   };
 
   const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
-    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
   const getTaskText = (task: any): string => {
@@ -125,17 +152,21 @@ export default function AttemptPage() {
 
   if (submitted && result) {
     return (
-      <div className="container" style={{ maxWidth: 600, padding: "2rem" }}>
-        <div className="card" style={{ textAlign: "center" }}>
+      <div className="test-screen">
+        <div className="task-card" style={{ textAlign: "center" }}>
           <h1 style={{ marginBottom: "1rem" }}>Тест завершён!</h1>
           <p>Статус: <span className="badge badge-info">{result.status}</span></p>
-          <p>Балл за тестовую часть: <strong>{result.auto_score}</strong> / {result.max_auto_score}</p>
+          <p>Балл: <strong>{result.auto_score}</strong> / {result.max_auto_score}</p>
           {result.pending_essay_count > 0 && (
-            <p style={{ color: "var(--text-secondary)" }}>
-              {result.pending_essay_count} задание(я) ожидают проверки репетитором
+            <p style={{ color: "#666" }}>
+              {result.pending_essay_count} задание(я) ожидают проверки
             </p>
           )}
-          <button className="btn btn-primary" style={{ marginTop: "1.5rem" }} onClick={() => router.push("/dashboard")}>
+          <button
+            className="submit-button"
+            style={{ marginTop: "1.5rem" }}
+            onClick={() => router.push("/dashboard")}
+          >
             На главную
           </button>
         </div>
@@ -144,11 +175,23 @@ export default function AttemptPage() {
   }
 
   if (submitted && !result) {
-    return <div className="container" style={{ padding: "2rem" }}>Время истекло. Тест завершён.</div>;
+    return (
+      <div className="test-screen">
+        <div className="task-card" style={{ textAlign: "center" }}>
+          Время истекло. Тест завершён.
+        </div>
+      </div>
+    );
   }
 
   if (tasks.length === 0) {
-    return <div className="container" style={{ padding: "2rem" }}>Загрузка заданий...</div>;
+    return (
+      <div className="test-screen">
+        <div className="task-card" style={{ textAlign: "center" }}>
+          Загрузка заданий...
+        </div>
+      </div>
+    );
   }
 
   const currentTask = tasks[currentIdx];
@@ -156,326 +199,278 @@ export default function AttemptPage() {
   const taskText = getTaskText(currentTask);
   const isMatching = tc?.matching_left && tc?.matching_right;
   const isSequence = tc?.sequence_items;
-  const answersPerStem = tc?.answers_per_stem || 1;
+  const answer = answers[currentTask.task_id] || "";
 
-  // Parse matching answer: "1,3,2,4" → array of per-stem selections
-  const matchingParts = isMatching ? (answers[currentTask.task_id] || "").split(",") : [];
+  // Extract column titles from text
+  const getLeftTitle = () => {
+    if (!isMatching) return "";
+    const text = taskText;
+    const match = text.match(/([А-Я]+(?:\s[А-Я]+)*)\s*\n\s*[А-Я]\)/m);
+    if (match) return match[1];
+    const possibleTitles = ["СОБЫТИЕ", "СОБЫТИЯ", "ПРОЦЕССЫ", "ФАКТЫ", "ГОД", "ГОДЫ",
+      "УЧАСТНИКИ", "ФРАГМЕНТЫ ИСТОЧНИКОВ", "ХАРАКТЕРИСТИКИ", "ПАМЯТНИКИ КУЛЬТУРЫ",
+      "ПРОИЗВЕДЕНИЯ КУЛЬТУРЫ", "НАЧАЛА СУЖДЕНИЙ"];
+    for (const t of possibleTitles) {
+      if (text.includes(t)) return t;
+    }
+    return "ЛЕВЫЙ СТОЛБЕЦ";
+  };
+
+  const getRightTitle = () => {
+    if (!isMatching) return "";
+    const text = taskText;
+    const possibleTitles = ["ГОД", "ГОДЫ", "ФАКТЫ", "УЧАСТНИКИ", "ХАРАКТЕРИСТИКИ",
+      "ВАРИАНТЫ ЗАВЕРШЕНИЯ", "ВАРИАНТЫ ЗАВЕРШЕНИЯ СУЖДЕНИЙ"];
+    for (const t of possibleTitles) {
+      if (text.includes(t)) return t;
+    }
+    return "ПРАВЫЙ СТОЛБЕЦ";
+  };
+
+  // Get instruction from text (first paragraph before column titles)
+  const getInstruction = () => {
+    const lines = taskText.split("\n");
+    const instructionLines: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (tc?.matching_left?.length && /^[А-Я]\)/.test(trimmed)) break;
+      if (tc?.sequence_items?.length && /^\d+\)/.test(trimmed)) break;
+      instructionLines.push(trimmed);
+    }
+    return instructionLines.join(" ") || taskText;
+  };
 
   return (
-    <>
-      <header className="header">
-        <h1 style={{ fontSize: "1rem" }}>Прохождение теста</h1>
-        <div style={{ display: "flex", gap: "1.5rem", alignItems: "center" }}>
-          {remaining !== null && (
-            <span
-              style={{
-                fontFamily: "monospace",
-                fontSize: "1.25rem",
-                fontWeight: 600,
-                color: remaining < 60 ? "var(--danger)" : "var(--text)",
-              }}
-            >
-              {formatTime(remaining)}
-            </span>
-          )}
-          <span style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-            {currentIdx + 1} / {tasks.length}
-          </span>
-        </div>
-      </header>
-      <main className="container" style={{ maxWidth: 900, padding: "2rem" }}>
-        <div className="card">
-          {/* Header: badge + type + hint */}
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 36,
-                height: 36,
-                borderRadius: "var(--radius)",
-                background: "var(--primary)",
-                color: "white",
-                fontSize: "0.9rem",
-                fontWeight: 700,
-              }}
-            >
-              {currentIdx + 1}
-            </span>
-            <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-              {currentTask.type}
-              {currentTask.block_id && <span style={{ marginLeft: "0.5rem" }}>#{currentTask.block_id}</span>}
+    <div className="test-screen">
+      {/* Test Header */}
+      <div className="test-header">
+        <div className="test-title">{attempt?.test_title || "Тест"}</div>
+        {remaining !== null && (
+          <div
+            className={`timer ${remaining < 60 ? "critical" : remaining < 300 ? "warning" : ""}`}
+          >
+            {formatTime(remaining)}
+          </div>
+        )}
+        <button className="submit-button" onClick={handleSubmit}>
+          Завершить тест
+        </button>
+      </div>
+
+      {/* Task Navigation */}
+      <div className="task-navigation">
+        <button
+          className="nav-button"
+          disabled={currentIdx === 0}
+          onClick={() => setCurrentIdx((i) => i - 1)}
+        >
+          ← Предыдущее
+        </button>
+        <span className="task-counter">
+          Задание {currentIdx + 1} из {tasks.length}
+        </span>
+        <button
+          className="nav-button"
+          disabled={currentIdx === tasks.length - 1}
+          onClick={() => setCurrentIdx((i) => i + 1)}
+        >
+          Следующее →
+        </button>
+      </div>
+
+      {/* Task Card */}
+      <div className="task-container">
+        <div className="task-card">
+          {/* Task Header */}
+          <div className="task-header">
+            <span className="task-type-badge">
+              Тип {currentTask.order_number || currentIdx + 1} № {currentTask.block_id || currentTask.task_id?.slice(0, 8)}
             </span>
             {currentTask.hint && (
-              <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", fontStyle: "italic" }}>
-                {currentTask.hint}
+              <span className="task-info-icon" title={currentTask.hint}>
+                ℹ️
               </span>
             )}
           </div>
 
-          {/* Condition text */}
-          <p style={{ fontSize: "0.95rem", lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-word", marginBottom: "1.5rem" }}>
-            {taskText}
-          </p>
+          {/* Instruction */}
+          <div className="task-instruction">{getInstruction()}</div>
 
-          {/* Matching task: two-column list + answer table */}
-          {isMatching ? (
-            <div>
-              {/* Two-column list */}
-              <div style={{ display: "flex", gap: "2rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
-                {/* Left column: stems */}
-                <div style={{ flex: 1, minWidth: 280 }}>
-                  <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    Начала суждений
+          {/* Content: Matching */}
+          {isMatching && (
+            <div className="task-content matching-layout">
+              <div className="matching-columns">
+                <div className="column left-column">
+                  <div className="column-title">{getLeftTitle()}</div>
+                  <div className="column-items">
+                    {tc.matching_left.map((item: any, j: number) => (
+                      <div key={j} className="item">
+                        {item.label}) {item.text}
+                      </div>
+                    ))}
                   </div>
-                  {tc.matching_left.map((item: any, j: number) => (
-                    <div
-                      key={j}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: "0.5rem",
-                        padding: "0.5rem 0.75rem",
-                        borderBottom: "1px solid var(--border)",
-                        fontSize: "0.9rem",
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      <span style={{ fontWeight: 700, color: "var(--primary)", flexShrink: 0 }}>
-                        {item.label})
-                      </span>
-                      <span style={{ flex: 1 }}>{item.text}</span>
-                    </div>
-                  ))}
                 </div>
-
-                {/* Right column: options */}
-                <div style={{ flex: 1, minWidth: 280 }}>
-                  <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    Варианты завершения
+                <div className="column right-column">
+                  <div className="column-title">{getRightTitle()}</div>
+                  <div className="column-items">
+                    {tc.matching_right.map((item: any, j: number) => (
+                      <div key={j} className="item">
+                        {item.label}) {item.text}
+                      </div>
+                    ))}
                   </div>
-                  {tc.matching_right.map((item: any, j: number) => (
-                    <div
-                      key={j}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: "0.5rem",
-                        padding: "0.5rem 0.75rem",
-                        borderBottom: "1px solid var(--border)",
-                        fontSize: "0.9rem",
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      <span style={{ fontWeight: 700, color: "var(--text-secondary)", flexShrink: 0 }}>
-                        {item.label})
-                      </span>
-                      <span style={{ flex: 1 }}>{item.text}</span>
-                    </div>
-                  ))}
                 </div>
-              </div>
-
-              {/* Answer table */}
-              <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
-                Запишите в ответ цифры, расположив их в порядке, соответствующем буквам:
-              </div>
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
-                {tc.matching_left.map((item: any, j: number) => (
-                  <div key={j} style={{ textAlign: "center" }}>
-                    <div style={{ fontWeight: 700, fontSize: "0.9rem", marginBottom: "0.25rem", color: "var(--primary)" }}>
-                      {item.label}
-                    </div>
-                    <div style={{ display: "flex", gap: "0.25rem" }}>
-                      {Array.from({ length: answersPerStem }).map((_, si) => (
-                        <select
-                          key={si}
-                          value={matchingParts[j]?.[si] || ""}
-                          onChange={(e) => {
-                            const current = matchingParts[j] || "";
-                            const chars = current.split("");
-                            chars[si] = e.target.value;
-                            handleMatchingAnswer(currentTask.task_id, j, chars.join(""));
-                          }}
-                          style={{
-                            width: 48,
-                            padding: "0.35rem",
-                            border: "1px solid var(--border)",
-                            borderRadius: "var(--radius)",
-                            fontSize: "0.85rem",
-                            textAlign: "center",
-                          }}
-                        >
-                          <option value="">-</option>
-                          {tc.matching_right.map((r: any) => (
-                            <option key={r.label} value={r.label}>{r.label}</option>
-                          ))}
-                        </select>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Answer preview */}
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>Ответ:</span>
-                <input
-                  type="text"
-                  value={answers[currentTask.task_id] || ""}
-                  onChange={(e) => handleChange(currentTask.task_id, e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: "0.4rem 0.75rem",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius)",
-                    fontSize: "0.9rem",
-                  }}
-                  placeholder="Например: 3142"
-                />
               </div>
             </div>
-          ) : isSequence ? (
-            /* Sequence task: numbered list + single input */
-            <div>
-              <div style={{ marginBottom: "1rem" }}>
+          )}
+
+          {/* Content: Chronology */}
+          {isSequence && (
+            <div className="task-content chronology-layout">
+              <ol className="events-list">
                 {tc.sequence_items.map((item: any, j: number) => (
-                  <div
-                    key={j}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: "0.5rem",
-                      padding: "0.5rem 0",
-                      borderBottom: "1px solid var(--border)",
-                      fontSize: "0.9rem",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    <span style={{ fontWeight: 700, color: "var(--text-secondary)", flexShrink: 0 }}>
-                      {item.position})
-                    </span>
-                    <span style={{ flex: 1 }}>{item.text}</span>
-                  </div>
+                  <li key={j} className="event-item">
+                    {item.text}
+                  </li>
                 ))}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>Ответ:</span>
-                <input
-                  type="text"
-                  value={answers[currentTask.task_id] || ""}
-                  onChange={(e) => handleChange(currentTask.task_id, e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: "0.4rem 0.75rem",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius)",
-                    fontSize: "0.9rem",
-                  }}
-                  placeholder="Например: 213"
-                />
-              </div>
+              </ol>
             </div>
-          ) : (
-            /* Default: short_answer or essay */
-            <div>
+          )}
+
+          {/* Content: Default (short_answer/essay) */}
+          {!isMatching && !isSequence && (
+            <div className="task-content">
               {(() => {
                 const opts = tc?.options;
                 if (opts && Array.isArray(opts) && opts.length > 0) {
                   const flatOpts = Array.isArray(opts[0]) ? opts[0] : opts;
                   return (
-                    <div style={{ marginBottom: "1rem" }}>
+                    <div>
                       {flatOpts.map((opt: string, i: number) => (
-                        <label key={i} style={{ display: "block", padding: "0.5rem", cursor: "pointer", borderBottom: "1px solid var(--border)" }}>
-                          <input
-                            type="radio"
-                            name={`task-${currentTask.task_id}`}
-                            value={String(i + 1)}
-                            checked={answers[currentTask.task_id] === String(i + 1)}
-                            onChange={(e) => handleChange(currentTask.task_id, e.target.value)}
-                          />
-                          <span style={{ marginLeft: "0.5rem" }}>{opt}</span>
-                        </label>
+                        <div key={i} className="item" style={{ marginBottom: "8px" }}>
+                          {String.fromCharCode(65 + i)}) {opt}
+                        </div>
                       ))}
                     </div>
                   );
                 }
                 return (
                   <textarea
-                    style={{ width: "100%", minHeight: 150, padding: "0.75rem", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.9rem" }}
-                    value={answers[currentTask.task_id] || ""}
+                    style={{
+                      width: "100%",
+                      minHeight: 150,
+                      padding: "12px",
+                      border: "1px solid #ccc",
+                      borderRadius: "4px",
+                      fontSize: "14px",
+                      fontFamily: "inherit",
+                    }}
+                    value={answer}
                     onChange={(e) => handleChange(currentTask.task_id, e.target.value)}
                     placeholder="Введите ответ..."
                   />
                 );
               })()}
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "1rem" }}>
-                <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>Ответ:</span>
-                <input
-                  type="text"
-                  value={answers[currentTask.task_id] || ""}
-                  onChange={(e) => handleChange(currentTask.task_id, e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: "0.4rem 0.75rem",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius)",
-                    fontSize: "0.9rem",
-                  }}
-                  placeholder="Введите ответ"
-                />
-              </div>
             </div>
           )}
-        </div>
 
-        {/* Navigation */}
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: "1rem" }}>
-          <button
-            className="btn"
-            style={{ background: "var(--border)" }}
-            disabled={currentIdx === 0}
-            onClick={() => setCurrentIdx((i) => i - 1)}
-          >
-            Назад
-          </button>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            {currentIdx < tasks.length - 1 && (
-              <button className="btn btn-primary" onClick={() => setCurrentIdx((i) => i + 1)}>
-                Далее
-              </button>
-            )}
-            {currentIdx === tasks.length - 1 && (
-              <button className="btn btn-success" onClick={handleSubmit}>
-                Завершить и отправить
-              </button>
-            )}
+          {/* Answer Section: Matching grid */}
+          {isMatching && (
+            <>
+              <div className="answer-instruction">
+                Запишите в ответ цифры, расположив их в порядке, соответствующем буквам:
+              </div>
+              <div className="answer-grid">
+                <table className="answer-table">
+                  <thead>
+                    <tr>
+                      {tc.matching_left.map((item: any, j: number) => (
+                        <th key={j}>{item.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      {tc.matching_left.map((item: any, j: number) => (
+                        <td key={j}>
+                          <input
+                            type="text"
+                            maxLength={1}
+                            className="answer-input"
+                            data-task={currentTask.task_id}
+                            data-index={j}
+                            value={answer[j] || ""}
+                            onChange={(e) =>
+                              handleGridInput(
+                                currentTask.task_id,
+                                j,
+                                e.target.value,
+                                tc.matching_left.length - 1
+                              )
+                            }
+                            onKeyDown={(e) =>
+                              handleGridKeydown(e, currentTask.task_id, j)
+                            }
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+                <div className="watermark">ege.sdamgia.ru</div>
+              </div>
+            </>
+          )}
+
+          {/* Answer Section: Final answer */}
+          <div className="final-answer">
+            <label className="answer-label">Ответ:</label>
+            <input
+              type="text"
+              className="final-answer-input"
+              value={answer}
+              onChange={(e) => handleChange(currentTask.task_id, e.target.value)}
+              placeholder={
+                isMatching
+                  ? "Введите ответ"
+                  : isSequence
+                  ? "Введите последовательность цифр"
+                  : "Введите ответ"
+              }
+            />
           </div>
         </div>
+      </div>
 
-        {/* Task navigation grid */}
-        <div style={{ display: "flex", gap: "0.25rem", marginTop: "1.5rem", flexWrap: "wrap" }}>
-          {tasks.map((t, i) => (
-            <button
-              key={t.task_id}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "var(--radius)",
-                border: "1px solid var(--border)",
-                background: i === currentIdx ? "var(--primary)" : answers[t.task_id] ? "#dcfce7" : "var(--surface)",
-                color: i === currentIdx ? "white" : "var(--text)",
-                cursor: "pointer",
-                fontSize: "0.75rem",
-              }}
-              onClick={() => setCurrentIdx(i)}
-            >
-              {i + 1}
-            </button>
-          ))}
-        </div>
-      </main>
-    </>
+      {/* Autosave Status */}
+      <div className={`autosave-status ${saveStatus === "saving" ? "saving" : saveStatus === "error" ? "error" : ""}`}>
+        <span className="status-icon">{saveStatus === "saved" ? "✓" : saveStatus === "saving" ? "⏳" : "✕"}</span>
+        <span className="status-text">
+          {saveStatus === "saved" ? "Сохранено" : saveStatus === "saving" ? "Сохранение..." : "Ошибка сохранения"}
+        </span>
+      </div>
+
+      {/* Bottom Navigation */}
+      <div className="task-navigation" style={{ marginTop: "16px" }}>
+        <button
+          className="nav-button"
+          disabled={currentIdx === 0}
+          onClick={() => setCurrentIdx((i) => i - 1)}
+        >
+          ← Предыдущее
+        </button>
+        <span className="task-counter">
+          Задание {currentIdx + 1} из {tasks.length}
+        </span>
+        <button
+          className="nav-button"
+          disabled={currentIdx === tasks.length - 1}
+          onClick={() => setCurrentIdx((i) => i + 1)}
+        >
+          Следующее →
+        </button>
+      </div>
+    </div>
   );
 }
