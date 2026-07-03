@@ -13,8 +13,6 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   completed: { label: "Выполнено", color: "#bbf7d0" },
 };
 
-const OPTION_LETTERS = "АБВГДЕЖЗИК";
-
 export default function TestDetailPage() {
   const { id: testId } = useParams();
   const { auth, hydrated, logout } = useAuth();
@@ -22,10 +20,7 @@ export default function TestDetailPage() {
   const [test, setTest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  // Replace state
-  const [replaceTaskId, setReplaceTaskId] = useState<string | null>(null);
-  const [replacing, setReplacing] = useState<string | null>(null);
+  const [currentIdx, setCurrentIdx] = useState(0);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -69,56 +64,58 @@ export default function TestDetailPage() {
     }
   };
 
-  const replaceTaskAction = async (taskId: string, newType: string) => {
-    setReplacing(taskId);
-    try {
-      await api.replaceTask(testId as string, taskId, newType, auth.token!);
-      setReplaceTaskId(null);
-      await loadTest();
-    } catch (e: any) {
-      setError(e.message);
-    }
-    setReplacing(null);
-  };
-
   const getTaskText = (task: any): string => {
-    if (typeof task.text_content === "object" && task.text_content !== null) {
-      return task.text_content.text || "";
-    }
-    return task.text_content || "";
+    const tc = task.text_content;
+    if (typeof tc === "object" && tc !== null) return tc.text || "";
+    return tc || "";
   };
 
-  const getTaskOptions = (task: any): string[] => {
-    if (typeof task.text_content === "object" && task.text_content !== null) {
-      // For matching tasks, prefer matching_right (clean data from table parsing)
-      if (task.text_content.matching_right && Array.isArray(task.text_content.matching_right)) {
-        return task.text_content.matching_right.map((item: any) => item.text || item.label || "");
-      }
-      const opts = task.text_content.options;
-      if (Array.isArray(opts) && opts.length > 0) {
-        if (Array.isArray(opts[0])) {
-          return opts[0];
-        }
-        return opts;
-      }
+  const getInstruction = (task: any): string => {
+    const text = getTaskText(task);
+    const tc = task.text_content;
+    const lines = text.split("\n");
+    const instructionLines: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (tc?.matching_left?.length && /^[А-Я]\)/.test(trimmed)) break;
+      if (tc?.sequence_items?.length && /^\d+\)/.test(trimmed)) break;
+      instructionLines.push(trimmed);
     }
-    return [];
+    return instructionLines.join(" ") || text;
+  };
+
+  const getLeftTitle = (task: any): string => {
+    const text = getTaskText(task);
+    const possibleTitles = ["СОБЫТИЕ", "СОБЫТИЯ", "ПРОЦЕССЫ", "ФАКТЫ", "ГОД", "ГОДЫ",
+      "УЧАСТНИКИ", "ФРАГМЕНТЫ ИСТОЧНИКОВ", "ХАРАКТЕРИСТИКИ", "ПАМЯТНИКИ КУЛЬТУРЫ",
+      "ПРОИЗВЕДЕНИЯ КУЛЬТУРЫ", "НАЧАЛА СУЖДЕНИЙ"];
+    for (const t of possibleTitles) {
+      if (text.includes(t)) return t;
+    }
+    return "ЛЕВЫЙ СТОЛБЕЦ";
+  };
+
+  const getRightTitle = (task: any): string => {
+    const text = getTaskText(task);
+    const possibleTitles = ["ГОД", "ГОДЫ", "ФАКТЫ", "УЧАСТНИКИ", "ХАРАКТЕРИСТИКИ",
+      "ВАРИАНТЫ ЗАВЕРШЕНИЯ", "ВАРИАНТЫ ЗАВЕРШЕНИЯ СУЖДЕНИЙ"];
+    for (const t of possibleTitles) {
+      if (text.includes(t)) return t;
+    }
+    return "ПРАВЫЙ СТОЛБЕЦ";
   };
 
   if (loading || !hydrated) {
-    return (
-      <div className="container" style={{ padding: "2rem" }}>
-        Загрузка...
-      </div>
-    );
+    return <div className="test-screen"><div className="task-card" style={{ textAlign: "center" }}>Загрузка...</div></div>;
   }
 
   if (!test) {
     return (
-      <div className="container" style={{ padding: "2rem" }}>
-        <div className="card" style={{ textAlign: "center", padding: "3rem" }}>
+      <div className="test-screen">
+        <div className="task-card" style={{ textAlign: "center" }}>
           <h2>Тест не найден</h2>
-          <Link href="/tests" className="btn btn-primary" style={{ marginTop: "1rem" }}>
+          <Link href="/tests" className="submit-button" style={{ marginTop: "1rem", display: "inline-block" }}>
             К списку тестов
           </Link>
         </div>
@@ -126,387 +123,157 @@ export default function TestDetailPage() {
     );
   }
 
+  const currentTask = test.tasks?.[currentIdx];
+  const tc = currentTask?.text_content;
+  const isMatching = tc?.matching_left && tc?.matching_right;
+  const isSequence = tc?.sequence_items;
+
   return (
-    <>
-      <header className="header">
+    <div className="test-screen">
+      {/* Header */}
+      <div className="test-header">
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <button
-            className="btn"
-            style={{ background: "var(--border)", fontSize: "0.8rem" }}
-            onClick={() => router.push("/tests")}
-          >
-            &larr; Назад
-          </button>
-          <h1 style={{ fontSize: "1.1rem" }}>{test.title}</h1>
+          <Link href="/tests" className="nav-button">&larr; Назад</Link>
+          <div className="test-title">{test.title}</div>
         </div>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          <button className="btn btn-danger" style={{ fontSize: "0.8rem" }} onClick={deleteTest}>
+          <span style={{ fontSize: "0.85rem", color: "#666" }}>
+            {test.tasks?.length || 0} заданий
+            {test.time_limit_minutes ? ` | ${test.time_limit_minutes} мин` : ""}
+          </span>
+          <button className="submit-button" style={{ background: "#dc2626" }} onClick={deleteTest}>
             Удалить тест
           </button>
-          <button className="btn btn-danger" style={{ fontSize: "0.8rem" }} onClick={logout}>
-            Выйти
+          <button className="nav-button" onClick={logout}>Выйти</button>
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ padding: "0.75rem 1rem", background: "#ffebee", border: "1px solid #fecaca", borderRadius: "4px", color: "#c62828", marginBottom: "1rem" }}>
+          {error}
+          <button onClick={() => setError("")} style={{ marginLeft: "0.5rem", background: "none", border: "none", cursor: "pointer", color: "#c62828" }}>✕</button>
+        </div>
+      )}
+
+      {/* Assignments */}
+      {test.assignments?.length > 0 && (
+        <div className="task-card" style={{ marginBottom: "1rem" }}>
+          <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>Назначения:</div>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            {test.assignments.map((a: any) => (
+              <span key={a.student_id} style={{ fontSize: "0.8rem", padding: "0.2rem 0.6rem", borderRadius: "9999px", background: STATUS_LABELS[a.status]?.color || "#f1f5f9" }}>
+                {a.student_name || a.student_id.slice(0, 8)}: {STATUS_LABELS[a.status]?.label || a.status}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Navigation */}
+      {test.tasks?.length > 0 && (
+        <div className="task-navigation">
+          <button className="nav-button" disabled={currentIdx === 0} onClick={() => setCurrentIdx((i) => i - 1)}>
+            ← Предыдущее
+          </button>
+          <span className="task-counter">Задание {currentIdx + 1} из {test.tasks.length}</span>
+          <button className="nav-button" disabled={currentIdx === test.tasks.length - 1} onClick={() => setCurrentIdx((i) => i + 1)}>
+            Следующее →
           </button>
         </div>
-      </header>
+      )}
 
-      <main className="container" style={{ maxWidth: 800, padding: "2rem" }}>
-        {error && (
-          <div
-            style={{
-              padding: "0.75rem 1rem",
-              background: "#fef2f2",
-              border: "1px solid #fecaca",
-              borderRadius: "var(--radius)",
-              color: "var(--danger)",
-              marginBottom: "1.5rem",
-            }}
-          >
-            {error}
-            <button
-              onClick={() => setError("")}
-              style={{ marginLeft: "0.5rem", background: "none", border: "none", cursor: "pointer", color: "var(--danger)" }}
-            >
-              ✕
-            </button>
+      {/* Task Card */}
+      {currentTask && (
+        <div className="task-card">
+          {/* Header */}
+          <div className="task-header">
+            <span className="task-type-badge">
+              Тип {currentTask.order_number || currentIdx + 1} № {currentTask.block_id || currentTask.task_id?.slice(0, 8)}
+            </span>
+            <span style={{ fontSize: "0.8rem", color: "#666" }}>{currentTask.type}</span>
           </div>
-        )}
 
-        {/* Test info */}
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius)",
-            padding: "1.5rem",
-            marginBottom: "2rem",
-          }}
-        >
-          <h2 style={{ fontSize: "1.25rem", marginBottom: "0.75rem" }}>{test.title}</h2>
-          <div style={{ display: "flex", gap: "1.5rem", fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-            {test.time_limit_minutes && <span>Таймер: {test.time_limit_minutes} мин</span>}
-            <span>Заданий: {test.tasks?.length || 0}</span>
-          </div>
-          {test.assignments?.length > 0 && (
-            <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              {test.assignments.map((a: any) => (
-                <span
-                  key={a.student_id}
-                  style={{
-                    fontSize: "0.8rem",
-                    padding: "0.25rem 0.75rem",
-                    borderRadius: "9999px",
-                    background: STATUS_LABELS[a.status]?.color || "#f1f5f9",
-                  }}
-                >
-                  {a.student_name || a.student_id.slice(0, 8)}: {STATUS_LABELS[a.status]?.label || a.status}
-                </span>
-              ))}
+          {/* Instruction */}
+          <div className="task-instruction">{getInstruction(currentTask)}</div>
+
+          {/* Content: Matching */}
+          {isMatching && (
+            <div className="task-content matching-layout">
+              <div className="matching-columns">
+                <div className="column left-column">
+                  <div className="column-title">{getLeftTitle(currentTask)}</div>
+                  <div className="column-items">
+                    {tc.matching_left.map((item: any, j: number) => (
+                      <div key={j} className="item">{item.label}) {item.text}</div>
+                    ))}
+                  </div>
+                </div>
+                <div className="column right-column">
+                  <div className="column-title">{getRightTitle(currentTask)}</div>
+                  <div className="column-items">
+                    {tc.matching_right.map((item: any, j: number) => (
+                      <div key={j} className="item">{item.label}) {item.text}</div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
-        </div>
 
-        {/* Tasks */}
-        {test.tasks?.map((task: any, i: number) => {
-          const text = getTaskText(task);
-          const options = getTaskOptions(task);
-
-          return (
-            <div
-              key={task.task_id}
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius)",
-                marginBottom: "1.5rem",
-                overflow: "hidden",
-              }}
-            >
-              {/* Task header */}
-              <div
-                style={{
-                  padding: "1rem 1.5rem",
-                  borderBottom: "1px solid var(--border)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-                  <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 600 }}>
-                    Вопрос {i + 1}
-                  </span>
-                  <span
-                    className={`badge ${task.type === "TEST" ? "badge-info" : "badge-warning"}`}
-                    style={{ fontSize: "0.75rem" }}
-                  >
-                    {task.type}
-                  </span>
-                </div>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <div style={{ position: "relative" }}>
-                    <button
-                      className="btn"
-                      style={{
-                        fontSize: "0.75rem",
-                        padding: "0.3rem 0.75rem",
-                        background: replaceTaskId === task.task_id ? "var(--primary)" : "var(--border)",
-                        color: replaceTaskId === task.task_id ? "white" : "var(--text)",
-                      }}
-                      onClick={() => setReplaceTaskId(replaceTaskId === task.task_id ? null : task.task_id)}
-                    >
-                      {replacing === task.task_id ? "Замена..." : "Заменить"}
-                    </button>
-                    {replaceTaskId === task.task_id && replacing !== task.task_id && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: "110%",
-                          right: 0,
-                          background: "var(--surface)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "var(--radius)",
-                          boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                          zIndex: 10,
-                          minWidth: 160,
-                          padding: "0.5rem",
-                        }}
-                      >
-                        <button
-                          style={{
-                            display: "block",
-                            width: "100%",
-                            textAlign: "left",
-                            padding: "0.5rem 0.75rem",
-                            border: "none",
-                            background: "none",
-                            borderRadius: "var(--radius)",
-                            cursor: "pointer",
-                            fontSize: "0.85rem",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
-                          onClick={() => replaceTaskAction(task.task_id, "TEST")}
-                        >
-                          <span className="badge badge-info" style={{ marginRight: "0.5rem", fontSize: "0.7rem" }}>TEST</span>
-                          Заменить на тест
-                        </button>
-                        <button
-                          style={{
-                            display: "block",
-                            width: "100%",
-                            textAlign: "left",
-                            padding: "0.5rem 0.75rem",
-                            border: "none",
-                            background: "none",
-                            borderRadius: "var(--radius)",
-                            cursor: "pointer",
-                            fontSize: "0.85rem",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
-                          onClick={() => replaceTaskAction(task.task_id, "ESSAY")}
-                        >
-                          <span className="badge badge-warning" style={{ marginRight: "0.5rem", fontSize: "0.7rem" }}>ESSAY</span>
-                          Заменить на сочинение
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    className="btn btn-danger"
-                    style={{ fontSize: "0.75rem", padding: "0.3rem 0.75rem" }}
-                    onClick={() => removeTask(task.task_id)}
-                  >
-                    Удалить
-                  </button>
-                </div>
-              </div>
-
-              {/* Task body */}
-              <div style={{ padding: "1.5rem" }}>
-                {/* Question text */}
-                <p
-                  style={{
-                    fontSize: "0.95rem",
-                    lineHeight: 1.7,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    marginBottom: task.text_content?.matching_left ? "1.25rem" : (options.length > 0 ? "1.25rem" : 0),
-                  }}
-                >
-                  {text}
-                </p>
-
-                {/* Matching task: two-column layout with dropdowns */}
-                {task.text_content?.matching_left && task.text_content?.matching_right ? (
-                  <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap" }}>
-                    {/* Left column: stems */}
-                    <div style={{ flex: 1, minWidth: 280 }}>
-                      <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                        Начала суждений
-                      </div>
-                      {task.text_content.matching_left.map((item: any, j: number) => (
-                        <div
-                          key={j}
-                          style={{
-                            display: "flex",
-                            alignItems: "flex-start",
-                            gap: "0.75rem",
-                            padding: "0.75rem 1rem",
-                            border: "1px solid var(--border)",
-                            borderRadius: "var(--radius)",
-                            marginBottom: "0.5rem",
-                            fontSize: "0.9rem",
-                            lineHeight: 1.5,
-                            background: "var(--bg)",
-                          }}
-                        >
-                          <span
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              minWidth: 28,
-                              height: 28,
-                              borderRadius: "50%",
-                              border: "2px solid var(--primary)",
-                              fontSize: "0.8rem",
-                              fontWeight: 700,
-                              color: "var(--primary)",
-                              flexShrink: 0,
-                            }}
-                          >
-                            {item.label}
-                          </span>
-                          <span style={{ flex: 1, paddingTop: "2px" }}>{item.text}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Right column: options */}
-                    <div style={{ flex: 1, minWidth: 280 }}>
-                      <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                        Варианты завершения
-                      </div>
-                      {task.text_content.matching_right.map((item: any, j: number) => (
-                        <div
-                          key={j}
-                          style={{
-                            display: "flex",
-                            alignItems: "flex-start",
-                            gap: "0.75rem",
-                            padding: "0.75rem 1rem",
-                            border: "1px solid var(--border)",
-                            borderRadius: "var(--radius)",
-                            marginBottom: "0.5rem",
-                            fontSize: "0.9rem",
-                            lineHeight: 1.5,
-                          }}
-                        >
-                          <span
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              minWidth: 28,
-                              height: 28,
-                              borderRadius: "50%",
-                              border: "2px solid var(--border)",
-                              fontSize: "0.8rem",
-                              fontWeight: 600,
-                              color: "var(--text-secondary)",
-                              flexShrink: 0,
-                            }}
-                          >
-                            {item.label}
-                          </span>
-                          <span style={{ flex: 1, paddingTop: "2px" }}>{item.text}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : options.length > 0 ? (
-                  /* Regular TEST options */
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                    {options.map((opt: string, j: number) => (
-                      <div
-                        key={j}
-                        style={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: "0.75rem",
-                          padding: "0.75rem 1rem",
-                          border: "1px solid var(--border)",
-                          borderRadius: "var(--radius)",
-                          fontSize: "0.9rem",
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        <span
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            minWidth: 28,
-                            height: 28,
-                            borderRadius: "50%",
-                            border: "2px solid var(--border)",
-                            fontSize: "0.8rem",
-                            fontWeight: 600,
-                            color: "var(--text-secondary)",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {OPTION_LETTERS[j] || j + 1}
-                        </span>
-                        <span style={{ flex: 1, paddingTop: "2px" }}>{opt}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-
-                {/* Criteria for ESSAY */}
-                {task.type === "ESSAY" && task.fipi_criteria && task.fipi_criteria.length > 0 && (
-                  <div
-                    style={{
-                      marginTop: "1rem",
-                      padding: "1rem",
-                      background: "var(--bg)",
-                      borderRadius: "var(--radius)",
-                      border: "1px solid var(--border)",
-                    }}
-                  >
-                    <div style={{ fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.5rem", color: "var(--text-secondary)" }}>
-                      Критерии ФИПИ:
-                    </div>
-                    {task.fipi_criteria.map((c: any, ci: number) => (
-                      <div
-                        key={ci}
-                        style={{
-                          fontSize: "0.85rem",
-                          padding: "0.25rem 0",
-                          color: "var(--text-secondary)",
-                        }}
-                      >
-                        {c.name || c}
-                        {c.max_score != null && (
-                          <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem" }}>(макс. {c.max_score} б.)</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+          {/* Content: Chronology */}
+          {isSequence && (
+            <div className="task-content chronology-layout">
+              <ol className="events-list">
+                {tc.sequence_items.map((item: any, j: number) => (
+                  <li key={j} className="event-item">{item.text}</li>
+                ))}
+              </ol>
             </div>
-          );
-        })}
+          )}
 
-        {test.tasks?.length === 0 && (
-          <div className="card" style={{ textAlign: "center", padding: "3rem" }}>
-            <h2 style={{ color: "var(--text-secondary)" }}>Нет заданий</h2>
+          {/* Content: Default */}
+          {!isMatching && !isSequence && (
+            <div className="task-content">
+              {(() => {
+                const opts = tc?.options;
+                if (opts && Array.isArray(opts) && opts.length > 0) {
+                  const flatOpts = Array.isArray(opts[0]) ? opts[0] : opts;
+                  return (
+                    <div>
+                      {flatOpts.map((opt: string, i: number) => (
+                        <div key={i} className="item" style={{ marginBottom: "8px" }}>
+                          {String.fromCharCode(65 + i)}) {opt}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+          )}
+
+          {/* Task footer */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid #e0e0e0" }}>
+            <button className="nav-button" style={{ color: "#dc2626", borderColor: "#dc2626" }} onClick={() => removeTask(currentTask.task_id)}>
+              Удалить задание
+            </button>
           </div>
-        )}
-      </main>
-    </>
+        </div>
+      )}
+
+      {/* Bottom navigation */}
+      {test.tasks?.length > 0 && (
+        <div className="task-navigation" style={{ marginTop: "1rem" }}>
+          <button className="nav-button" disabled={currentIdx === 0} onClick={() => setCurrentIdx((i) => i - 1)}>
+            ← Предыдущее
+          </button>
+          <span className="task-counter">Задание {currentIdx + 1} из {test.tasks.length}</span>
+          <button className="nav-button" disabled={currentIdx === test.tasks.length - 1} onClick={() => setCurrentIdx((i) => i + 1)}>
+            Следующее →
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
