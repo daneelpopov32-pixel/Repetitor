@@ -2,10 +2,10 @@ from uuid import UUID
 from datetime import datetime
 
 import httpx
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Answer, Task, Attempt, TestTask, Theme
+from app.models import Answer, Task, Attempt, TestTask
 from app.config import settings
 
 

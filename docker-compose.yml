@@ -38,6 +38,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
+      - media_data:/app/media
 
   celery-worker:
     build: ./backend
@@ -51,6 +52,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
+      - media_data:/app/media
 
   frontend:
     build: ./frontend
@@ -63,3 +65,4 @@ services:
 
 volumes:
   pgdata:
+  media_data:

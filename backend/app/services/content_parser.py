@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Task, Theme, Subject
+from app.models import Task
 
 
 async def parse_fipi_page(url: str, subject_id: int, theme_id: int) -> list[dict]:
@@ -137,6 +137,8 @@ async def import_task(
     correct_answer_key: dict | None = None,
     fipi_criteria: list | None = None,
     source_url: str | None = None,
+    exam_position: int | None = None,
+    difficulty_level: str | None = None,
 ) -> dict:
     """Import a single task with duplicate check."""
     if await check_duplicate(db, text_content):
@@ -157,6 +159,8 @@ async def import_task(
         fipi_criteria=fipi_criteria,
         source_url=source_url,
         metadata_={"text_hash": text_hash},
+        exam_position=exam_position,
+        difficulty_level=difficulty_level,
     )
     db.add(task)
     await db.commit()

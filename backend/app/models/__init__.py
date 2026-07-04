@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, date
+from datetime import datetime
 
 from sqlalchemy import (
     Column, String, Integer, Text, DateTime, Date, ForeignKey, UniqueConstraint, JSON
@@ -118,6 +118,9 @@ class Task(Base):
     fipi_criteria = Column(JSON, nullable=True)
     source_url = Column(String(500))
     metadata_ = Column("metadata", JSON, default=dict)
+    # KIM classification fields
+    exam_position = Column(Integer, nullable=True)  # 1-21
+    difficulty_level = Column(String(1), nullable=True)  # Б, П, В
 
     subject = relationship("Subject")
     theme = relationship("Theme", back_populates="tasks")

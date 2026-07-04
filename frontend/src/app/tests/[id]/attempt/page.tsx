@@ -17,6 +17,7 @@ export default function AttemptPage() {
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
+  const [showInfo, setShowInfo] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout>(null);
   const timerRef = useRef<NodeJS.Timeout>(null);
 
@@ -43,12 +44,28 @@ export default function AttemptPage() {
       const taskData = await api.getAttemptTasks(attemptId as string, auth.token!);
       setTasks(taskData.tasks || []);
 
+      // Load existing answers
+      const existingAnswers: Record<string, string> = {};
+      for (const t of taskData.tasks || []) {
+        if (t.text_content?.student_input) {
+          existingAnswers[t.task_id] = t.text_content.student_input;
+        }
+      }
+      setAnswers(existingAnswers);
+
       if (att.time_limit_minutes && att.started_at) {
         const started = new Date(att.started_at).getTime();
         const limit = att.time_limit_minutes * 60 * 1000;
         const serverNow = new Date(att.server_time).getTime();
         const elapsed = serverNow - started;
         const left = Math.max(0, Math.floor((limit - elapsed) / 1000));
+
+        if (left <= 0) {
+          // Time expired server-side — mark as submitted
+          setSubmitted(true);
+          return;
+        }
+
         setRemaining(left);
 
         timerRef.current = setInterval(() => {
@@ -285,17 +302,59 @@ export default function AttemptPage() {
           {/* Task Header */}
           <div className="task-header">
             <span className="task-type-badge">
-              Тип {currentTask.order_number || currentIdx + 1} № {currentTask.block_id || currentTask.task_id?.slice(0, 8)}
+              Тип {currentTask.exam_position || "?"} № {currentTask.block_id || currentTask.task_id?.slice(0, 8)}
             </span>
-            {currentTask.hint && (
-              <span className="task-info-icon" title={currentTask.hint}>
-                ℹ️
-              </span>
-            )}
+            <button
+              className="task-info-icon"
+              style={{ cursor: "pointer", fontSize: "0.85rem", padding: "0.1rem 0.3rem", border: "1px solid #ccc", borderRadius: "4px", background: "white" }}
+              onClick={() => setShowInfo(true)}
+            >
+              i
+            </button>
           </div>
+
+          {/* Info Modal */}
+          {showInfo && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+              <div className="card" style={{ maxWidth: 500, width: "90%" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                  <h3 style={{ margin: 0 }}>Информация о задании</h3>
+                  <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2rem" }} onClick={() => setShowInfo(false)}>Close</button>
+                </div>
+                <p style={{ fontSize: "0.9rem", lineHeight: 1.6 }}>
+                  Раздел кодификатора ФИПИ/Решу ЕГЭ: {currentTask.theme_name || currentTask.theme_id}
+                </p>
+                <p style={{ fontSize: "0.9rem", lineHeight: 1.6 }}>
+                  Тип задания: {currentTask.exam_position ? `Тип ${currentTask.exam_position}` : "—"}
+                  {currentTask.difficulty_level ? ` (${currentTask.difficulty_level})` : ""}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Instruction */}
           <div className="task-instruction">{getInstruction()}</div>
+
+          {/* Images */}
+          {tc?.images && tc.images.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", margin: "1rem 0" }}>
+              {tc.images.map((imgPath: string, i: number) => (
+                <div key={i} style={{ position: "relative" }}>
+                  <span style={{ position: "absolute", top: 4, left: 4, background: "rgba(0,0,0,0.6)", color: "white", padding: "0.1rem 0.4rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, zIndex: 1 }}>
+                    {i + 1})
+                  </span>
+                  <img
+                    src={`/api/v1/media/images/${imgPath.split("/").pop()}`}
+                    alt={`${i + 1}`}
+                    style={{ width: "100%", display: "block", border: "1px solid #e0e0e0", borderRadius: "4px" }}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Content: Matching */}
           {isMatching && (

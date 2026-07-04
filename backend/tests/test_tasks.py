@@ -116,5 +116,6 @@ async def test_list_tasks_filter_by_type(client: AsyncClient, tutor_token, test_
         headers={"Authorization": f"Bearer {tutor_token}"},
     )
     assert resp.status_code == 200
-    tasks = resp.json()
+    data = resp.json()
+    tasks = data["tasks"]
     assert all(t["type"] == "ESSAY" for t in tasks)

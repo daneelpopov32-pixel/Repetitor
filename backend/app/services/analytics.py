@@ -1,11 +1,10 @@
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from sqlalchemy import select, func, case
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.models import Attempt, Answer, Task, Theme, TestAssignment, TutorStudent
+from app.models import Attempt, Answer, Task, Theme, TutorStudent
 
 
 async def get_dashboard(db: AsyncSession, student_id: UUID) -> dict:
@@ -98,7 +97,7 @@ async def get_tutor_students_summary(db: AsyncSession, tutor_id: UUID) -> list[d
         select(TutorStudent).where(TutorStudent.tutor_id == tutor_id)
     )
     links = result.scalars().all()
-    student_ids = [l.student_id for l in links]
+    student_ids = [link.student_id for link in links]
 
     if not student_ids:
         return []

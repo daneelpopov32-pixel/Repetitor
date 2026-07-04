@@ -41,49 +41,49 @@ HEADERS = {
 FIPI_PROJECT_ID = "068A227D253BA6C04D0C832387FD0D89"
 
 # History codifier — official 2025 (ИС-11 ЕГЭ, Таблица 3)
-# Positions 1-6: combined from ОГЭ, FIPI has individual codes 1,2,3,4,5,6
-# Positions 7-12: detailed sub-themes
+# Codes must match DB (trailing dots: "1.", "7.1.", etc.)
 CODIFIER_THEMES_HISTORY = {
-    "1": "История России. Древнейший период",
-    "2": "История России. Средние века",
-    "3": "История России. XVI – XVII вв.",
-    "4": "История России. XVIII в.",
-    "5": "История России. Первая половина XIX в.",
-    "6": "История России. Вторая половина XIX в.",
-    "7": "История России. 1914–1945 гг.",
-    "7.1": "Россия в Первой мировой войне (1914–1918)",
-    "7.2": "1917 год: от Февраля к Октябрю",
-    "7.3": "Первые революционные преобразования большевиков",
-    "7.4": "Гражданская война и её последствия",
-    "7.5": "Идеология и культура Советской России периода Гражданской войны",
-    "7.6": "СССР в годы нэпа (1921–1928)",
-    "7.7": "Советский Союз в 1929–1941 гг.",
-    "7.8": "Культурное пространство советского общества в 1920–1930-е гг.",
-    "7.9": "Внешняя политика СССР в 1920–1930-е гг.",
-    "8": "Великая Отечественная война (1941–1945)",
-    "8.1": "Первый период войны (июнь 1941 – осень 1942 г.)",
-    "8.2": "Коренной перелом в ходе войны (осень 1942 – 1943 г.)",
-    "8.3": "Человек и война: единство фронта и тыла",
-    "8.4": "Победа СССР в Великой Отечественной войне. Окончание Второй мировой войны (1944–сентябрь 1945 г.)",
-    "9": "СССР в 1945–1991 гг.",
-    "9.1": "СССР в 1945–1953 гг.",
-    "9.2": "СССР в середине 1950-х – первой половине 1960-х гг.",
-    "9.3": "Советское государство и общество в середине 1960-х – начале 1980-х гг.",
-    "9.4": "Политика перестройки. Распад СССР (1985–1991)",
-    "10": "Российская Федерация в 1992–2022 гг.",
-    "10.1": "Становление новой России (1992–1999)",
-    "10.2": "Россия в XXI в.: вызовы времени и задачи модернизации",
-    "11": "Всеобщая история. 1914–1945 гг.",
-    "11.1": "Мир накануне и в годы Первой мировой войны",
-    "11.2": "Мир в 1918–1939 гг.",
-    "11.3": "Вторая мировая война",
-    "12": "Всеобщая история. 1945–2022 гг.",
-    "12.1": "Страны Северной Америки и Европы во второй половине XX – начале XXI в.",
-    "12.2": "Страны Азии, Африки во второй половине XX – начале XXI в.",
+    "1.": "История России. Древнейший период",
+    "2.": "История России. Средние века",
+    "3.": "История России. XVI – XVII вв.",
+    "4.": "История России. XVIII в.",
+    "5.": "История России. Первая половина XIX в.",
+    "6.": "История России. Вторая половина XIX в.",
+    "7.": "История России. 1914–1945 гг.",
+    "7.1.": "Россия в Первой мировой войне (1914–1918)",
+    "7.2.": "1917 год: от Февраля к Октябрю",
+    "7.3.": "Первые революционные преобразования большевиков",
+    "7.4.": "Гражданская война и её последствия",
+    "7.5.": "Идеология и культура Советской России периода Гражданской войны",
+    "7.6.": "СССР в годы нэпа (1921–1928)",
+    "7.7.": "Советский Союз в 1929–1941 гг.",
+    "7.8.": "Культурное пространство советского общества в 1920–1930-е гг.",
+    "7.9.": "Внешняя политика СССР в 1920–1930-е гг.",
+    "8.": "Великая Отечественная война (1941–1945)",
+    "8.1.": "Первый период войны (июнь 1941 – осень 1942 г.)",
+    "8.2.": "Коренной перелом в ходе войны (осень 1942 – 1943 г.)",
+    "8.3.": "Человек и война: единство фронта и тыла",
+    "8.4.": "Победа СССР в Великой Отечественной войне. Окончание Второй мировой войны (1944–сентябрь 1945 г.)",
+    "9.": "СССР в 1945–1991 гг.",
+    "9.1.": "СССР в 1945–1953 гг.",
+    "9.2.": "СССР в середине 1950-х – первой половине 1960-х гг.",
+    "9.3.": "Советское государство и общество в середине 1960-х – начале 1980-х гг.",
+    "9.4.": "Политика перестройки. Распад СССР (1985–1991)",
+    "10.": "Российская Федерация в 1992–2022 гг.",
+    "10.1.": "Становление новой России (1992–1999)",
+    "10.2.": "Россия в XXI в.: вызовы времени и задачи модернизации",
+    "11.": "Всеобщая история. 1914–1945 гг.",
+    "11.1.": "Мир накануне и в годы Первой мировой войны",
+    "11.2.": "Мир в 1918–1939 гг.",
+    "11.3.": "Вторая мировая война",
+    "12.": "Всеобщая история. 1945–2022 гг.",
+    "12.1.": "Страны Северной Америки и Европы во второй половине XX – начале XXI в.",
+    "12.2.": "Страны Азии, Африки во второй половине XX – начале XXI в.",
     "12.3": "Страны Латинской Америки во второй половине XX – начале XXI в.",
-    "12.4": "Международные отношения во второй половине XX – начале XXI в.",
-    "12.5": "Развитие науки и культуры во второй половине XX – начале XXI в.",
-    "12.6": "Современный мир",
+    "12.3.": "Страны Латинской Америки во второй половине XX – начале XXI в.",
+    "12.4.": "Международные отношения во второй половине XX – начале XXI в.",
+    "12.5.": "Развитие науки и культуры во второй половине XX – начале XXI в.",
+    "12.6.": "Современный мир",
 }
 
 # Social studies codifier (separate from History)
@@ -398,9 +398,12 @@ def _extract_tasks_from_html(html):
         if not cell:
             continue
 
-        # Extract images
-        images = cell.find_all("img")
-        task["images"] = [img.get("src", "") for img in images if img.get("src")]
+        # Extract images from <img> tags AND ShowPictureQ() JavaScript calls
+        images = [img.get("src", "") for img in cell.find_all("img") if img.get("src")]
+        # Also extract from ShowPictureQ() calls in the full qblock HTML
+        js_images = re.findall(r"ShowPictureQ\('([^']+)'\)", str(qb))
+        images.extend(js_images)
+        task["images"] = images
 
         # Clean text FIRST — remove UI elements before type detection
         task["text"] = _clean_cell_text(cell)
@@ -515,19 +518,36 @@ def _fetch_tasks_for_theme(theme_code, needed_count=None, task_type=None):
 
 
 def _save_tasks_to_db(db, theme, fetched_tasks):
-    """Save fetched tasks to DB with deduplication. Returns count of new tasks added."""
+    """Save fetched tasks to DB with deduplication per theme. Returns count of new tasks added."""
+    from app.models import Task
     from app.services.content_parser import compute_text_hash
+    from app.services.kim_mapping import classify_task
+    from app.services.image_downloader import download_task_images
 
     added = 0
     for task_data in fetched_tasks:
         text_content = _build_text_content(task_data)
+
+        # Download images if present
+        raw_images = text_content.get("images", [])
+        if raw_images:
+            local_paths = download_task_images(raw_images)
+            text_content["images"] = local_paths
+
         text_hash = compute_text_hash(text_content)
 
+        # Dedup within this theme only (not globally)
         existing = db.query(Task).filter(
-            Task.metadata_["text_hash"].as_string() == text_hash
+            Task.theme_id == theme.id,
+            Task.metadata_["text_hash"].as_string() == text_hash,
         ).first()
         if existing:
             continue
+
+        # Auto-classify KIM position and difficulty
+        subtype = task_data.get("subtype", "")
+        text = task_data.get("text", "")
+        exam_position, difficulty_level = classify_task(subtype, text, text_content)
 
         task = Task(
             subject_id=theme.subject_id,
@@ -540,8 +560,10 @@ def _save_tasks_to_db(db, theme, fetched_tasks):
             metadata_={
                 "text_hash": text_hash,
                 "fipi_guid": task_data.get("guid"),
-                "subtype": task_data.get("subtype"),
+                "subtype": subtype,
             },
+            exam_position=exam_position,
+            difficulty_level=difficulty_level,
         )
         db.add(task)
         added += 1
@@ -576,35 +598,23 @@ def sync_codifier(self, subject_name="История"):
         db.close()
 
 
-@celery_app.task(bind=True, name="sync_theme_full")
-def sync_theme_full(self, theme_code):
-    """Full sync: fetch ALL tasks from FIPI for a single theme.
-
-    Incremental: skips tasks that already exist (by content hash).
-    Reports progress with counts.
-    """
+def _sync_theme_core(theme_code, subject_id=None):
+    """Core logic for full theme sync. Returns result dict."""
     from app.models import Theme, Task
 
     db = _get_sync_session()
     try:
-        theme = db.query(Theme).filter(Theme.fipi_code == theme_code).first()
+        query = db.query(Theme).filter(Theme.fipi_code == theme_code)
+        if subject_id:
+            from uuid import UUID
+            query = query.filter(Theme.subject_id == UUID(subject_id))
+        theme = query.first()
         if not theme:
             return {"error": f"Theme {theme_code} not found in DB"}
 
         existing_count = db.query(Task).filter(Task.theme_id == theme.id).count()
 
-        self.update_state(state="PROGRESS", meta={
-            "status": f"Загрузка заданий по теме {theme_code}...",
-            "existing": existing_count,
-        })
-
         fetched = _fetch_tasks_for_theme(theme_code, needed_count=None)
-
-        self.update_state(state="PROGRESS", meta={
-            "status": f"Найдено {len(fetched)} заданий на ФИПИ, сохраняем...",
-            "existing": existing_count,
-            "fetched": len(fetched),
-        })
 
         added = _save_tasks_to_db(db, theme, fetched)
         total = db.query(Task).filter(Task.theme_id == theme.id).count()
@@ -619,6 +629,15 @@ def sync_theme_full(self, theme_code):
         }
     finally:
         db.close()
+
+
+@celery_app.task(bind=True, name="sync_theme_full")
+def sync_theme_full(self, theme_code):
+    """Celery wrapper for full theme sync with progress reporting."""
+    self.update_state(state="PROGRESS", meta={
+        "status": f"Синхронизация темы {theme_code}...",
+    })
+    return _sync_theme_core(theme_code)
 
 
 @celery_app.task(bind=True, name="sync_subject_full")

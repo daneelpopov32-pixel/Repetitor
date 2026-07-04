@@ -393,7 +393,6 @@ def test_no_7letter_garbage_pattern():
     This is a FIPI UI widget with 7 letters and decreasing digits.
     It must never appear in parsed task text.
     """
-    from bs4 import BeautifulSoup
     import re
 
     # Simulate the exact garbage pattern the user reported

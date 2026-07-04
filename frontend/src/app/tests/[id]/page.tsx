@@ -23,6 +23,7 @@ export default function TestDetailPage() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [viewMode, setViewMode] = useState<"single" | "list">("list");
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [showInfo, setShowInfo] = useState(false);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -288,11 +289,55 @@ export default function TestDetailPage() {
             <div className="task-card">
               <div className="task-header">
                 <span className="task-type-badge">
-                  {currentTask.order_number || currentIdx + 1}
-                  {currentTask.fipi_code ? ` (${currentTask.fipi_code})` : ""}
+                  Тип {currentTask.exam_position || "?"} № {currentTask.block_id || currentTask.task_id?.slice(0, 8)}
                 </span>
-                <span style={{ fontSize: "0.8rem", color: "#666" }}>{currentTask.type}</span>
+                <button
+                  style={{ cursor: "pointer", fontSize: "0.85rem", padding: "0.1rem 0.3rem", border: "1px solid #ccc", borderRadius: "4px", background: "white" }}
+                  onClick={() => setShowInfo(true)}
+                >
+                  i
+                </button>
               </div>
+
+              {/* Info Modal */}
+              {showInfo && (
+                <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+                  <div className="card" style={{ maxWidth: 500, width: "90%" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                      <h3 style={{ margin: 0 }}>Информация о задании</h3>
+                      <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2rem" }} onClick={() => setShowInfo(false)}>Close</button>
+                    </div>
+                    <p style={{ fontSize: "0.9rem", lineHeight: 1.6 }}>
+                      Раздел кодификатора ФИПИ/Решу ЕГЭ: {currentTask.theme_name || currentTask.theme_id}
+                    </p>
+                    <p style={{ fontSize: "0.9rem", lineHeight: 1.6 }}>
+                      Тип задания: {currentTask.exam_position ? `Тип ${currentTask.exam_position}` : "—"}
+                      {currentTask.difficulty_level ? ` (${currentTask.difficulty_level})` : ""}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Images */}
+              {currentTask.text_content?.images && currentTask.text_content.images.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", margin: "1rem 0" }}>
+                  {currentTask.text_content.images.map((imgPath: string, i: number) => (
+                    <div key={i} style={{ position: "relative" }}>
+                      <span style={{ position: "absolute", top: 4, left: 4, background: "rgba(0,0,0,0.6)", color: "white", padding: "0.1rem 0.4rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, zIndex: 1 }}>
+                        {i + 1})
+                      </span>
+                      <img
+                        src={`/api/v1/media/images/${imgPath.split("/").pop()}`}
+                        alt={`${i + 1}`}
+                        style={{ width: "100%", display: "block", border: "1px solid #e0e0e0", borderRadius: "4px" }}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {renderTaskContent(currentTask, true)}
 
@@ -331,15 +376,15 @@ export default function TestDetailPage() {
                 onClick={() => toggleExpand(task.task_id)}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                  <span style={{ fontWeight: 600, minWidth: 24 }}>{task.order_number || idx + 1}</span>
+                  <span style={{ fontWeight: 600, minWidth: 24 }}>{idx + 1}</span>
                   <span style={{
                     fontSize: "0.75rem",
                     padding: "0.1rem 0.4rem",
                     borderRadius: "4px",
-                    background: task.fipi_code ? "#e0e7ff" : "#f1f5f9",
-                    color: task.fipi_code ? "#3730a3" : "#64748b",
+                    background: "#e0e7ff",
+                    color: "#3730a3",
                   }}>
-                    {task.fipi_code || "—"}
+                    Тип {task.exam_position || "?"}
                   </span>
                   <span style={{
                     fontSize: "0.7rem",

@@ -28,11 +28,13 @@ export default function ContentPage() {
   const [selectedSubject, setSelectedSubject] = useState<string>("");
   const [themeTree, setThemeTree] = useState<ThemeNode[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskTotal, setTaskTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showAddSubject, setShowAddSubject] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
   const [showAddTask, setShowAddTask] = useState(false);
-  const [filterTheme, setFilterTheme] = useState("");
+  const [selectedTheme, setSelectedTheme] = useState<string>("");
+  const [expandedThemes, setExpandedThemes] = useState<Set<string>>(new Set());
   const [filterType, setFilterType] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -67,16 +69,38 @@ export default function ContentPage() {
   const loadTasks = async (subjectId: string) => {
     try {
       const data = await api.listTasks({ subject_id: subjectId }, auth.token!);
-      setTasks(data);
+      setTasks(data.tasks || []);
+      setTaskTotal(data.total || 0);
     } catch {}
   };
 
   useEffect(() => {
     if (selectedSubject) {
       loadThemeTree(selectedSubject);
-      loadTasks(selectedSubject);
+      loadTasksForSubject(selectedSubject);
     }
   }, [selectedSubject]);
+
+  const loadTasksForSubject = async (subjectId: string) => {
+    try {
+      const data = await api.listTasks({ subject_id: subjectId }, auth.token!);
+      setTasks(data.tasks || []);
+      setTaskTotal(data.total || 0);
+    } catch {}
+  };
+
+  const loadTasksForTheme = async (themeId: string) => {
+    try {
+      const data = await api.listTasks({ theme_id: themeId }, auth.token!);
+      setTasks(data.tasks || []);
+      setTaskTotal(data.total || 0);
+    } catch {}
+  };
+
+  const handleThemeClick = (themeId: string) => {
+    setSelectedTheme(themeId);
+    loadTasksForTheme(themeId);
+  };
 
   const handleAddSubject = async () => {
     if (!newSubjectName.trim()) {
@@ -96,16 +120,56 @@ export default function ContentPage() {
   };
 
   const renderThemeTree = (nodes: ThemeNode[], depth = 0) => {
-    return nodes.map((node) => (
-      <div key={node.id} style={{ paddingLeft: depth * 1.5 + "rem" }}>
-        <div style={{ padding: "0.35rem 0", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <span style={{ fontSize: "0.875rem" }}>
-            {node.fipi_code ? `${node.fipi_code} ` : ""}{node.name}
-          </span>
+    return nodes.map((node) => {
+      const hasChildren = node.children?.length > 0;
+      const isExpanded = expandedThemes.has(node.id);
+      const isSelected = selectedTheme === node.id;
+
+      return (
+        <div key={node.id} style={{ paddingLeft: depth * 1.25 + "rem" }}>
+          <div
+            onClick={() => handleThemeClick(node.id)}
+            style={{
+              padding: "0.4rem 0.5rem",
+              borderRadius: "var(--radius)",
+              cursor: "pointer",
+              background: isSelected ? "var(--primary)" : "transparent",
+              color: isSelected ? "white" : "var(--text)",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.35rem",
+              fontSize: "0.85rem",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--bg)"; }}
+            onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
+          >
+            {hasChildren && (
+              <span
+                onClick={(e) => { e.stopPropagation(); toggleExpand(node.id); }}
+                style={{ fontSize: "0.7rem", width: "1rem", textAlign: "center", userSelect: "none" }}
+              >
+                {isExpanded ? "▼" : "▶"}
+              </span>
+            )}
+            {!hasChildren && <span style={{ width: "1rem" }} />}
+            <span>
+              {node.fipi_code ? `${node.fipi_code} ` : ""}{node.name}
+            </span>
+          </div>
+          {hasChildren && isExpanded && renderThemeTree(node.children, depth + 1)}
         </div>
-        {node.children?.length > 0 && renderThemeTree(node.children, depth + 1)}
-      </div>
-    ));
+      );
+    });
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedThemes((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   if (loading || !hydrated) return <div className="container" style={{ padding: "2rem" }}>Загрузка...</div>;
@@ -214,16 +278,20 @@ export default function ContentPage() {
 
                   <div className="card">
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
-                      <h3>Задания ({tasks.length})</h3>
+                      <h3>
+                        Задания ({taskTotal})
+                        {selectedTheme && (
+                          <button
+                            style={{ marginLeft: "0.5rem", fontSize: "0.75rem", background: "var(--border)", border: "none", borderRadius: "var(--radius)", padding: "0.15rem 0.5rem", cursor: "pointer", color: "var(--text-secondary)" }}
+                            onClick={() => { setSelectedTheme(""); loadTasksForSubject(selectedSubject); }}
+                          >
+                            Показать все
+                          </button>
+                        )}
+                      </h3>
                       <button className="btn btn-primary" style={{ fontSize: "0.75rem" }} onClick={() => setShowAddTask(true)}>Добавить задание</button>
                     </div>
                     <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
-                      <select value={filterTheme} onChange={(e) => setFilterTheme(e.target.value)} style={{ padding: "0.35rem", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.8rem" }}>
-                        <option value="">Все темы</option>
-                        {themeTree.map((t) => (
-                          <option key={t.id} value={t.id}>{t.fipi_code ? `${t.fipi_code} ` : ""}{t.name}</option>
-                        ))}
-                      </select>
                       <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ padding: "0.35rem", border: "1px solid var(--border)", borderRadius: "var(--radius)", fontSize: "0.8rem" }}>
                         <option value="">Все типы</option>
                         <option value="TEST">TEST</option>
@@ -234,9 +302,9 @@ export default function ContentPage() {
                         style={{ fontSize: "0.75rem", background: "var(--border)" }}
                         onClick={() => {
                           const params: any = { subject_id: selectedSubject };
-                          if (filterTheme) params.theme_id = filterTheme;
+                          if (selectedTheme) params.theme_id = selectedTheme;
                           if (filterType) params.task_type = filterType;
-                          api.listTasks(params, auth.token!).then(setTasks);
+                          api.listTasks(params, auth.token!).then((data) => { setTasks(data.tasks || []); setTaskTotal(data.total || 0); });
                         }}
                       >
                         Применить
@@ -309,6 +377,8 @@ function AddTaskForm({
   const [answerType, setAnswerType] = useState("single_choice");
   const [correctAnswer, setCorrectAnswer] = useState("");
   const [criteria, setCriteria] = useState([{ name: "", max_score: 1 }]);
+  const [examPosition, setExamPosition] = useState("");
+  const [difficultyLevel, setDifficultyLevel] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
@@ -325,6 +395,8 @@ function AddTaskForm({
         type: taskType,
         text_content: { text: text.trim() },
       };
+      if (examPosition) payload.exam_position = parseInt(examPosition);
+      if (difficultyLevel) payload.difficulty_level = difficultyLevel;
       if (taskType === "TEST") {
         payload.text_content.options = options.filter((o) => o.trim());
         if (answerType === "single_choice") {
@@ -383,6 +455,26 @@ function AddTaskForm({
               };
               return <option key={id} value={id}>{findName(themes)}</option>;
             })}
+          </select>
+        </div>
+      </div>
+      <div className="grid grid-2" style={{ gap: "0.75rem", marginTop: "0.75rem" }}>
+        <div className="form-group">
+          <label>Позиция ЕГЭ (1-21)</label>
+          <select value={examPosition} onChange={(e) => setExamPosition(e.target.value)}>
+            <option value="">Не указана</option>
+            {Array.from({ length: 21 }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>Задание {n}</option>
+            ))}
+          </select>
+        </div>
+        <div className="form-group">
+          <label>Уровень сложности</label>
+          <select value={difficultyLevel} onChange={(e) => setDifficultyLevel(e.target.value)}>
+            <option value="">Не указан</option>
+            <option value="Б">Б — базовый</option>
+            <option value="П">П — повышенный</option>
+            <option value="В">В — высокий</option>
           </select>
         </div>
       </div>

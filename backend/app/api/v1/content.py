@@ -1,6 +1,6 @@
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -72,6 +72,8 @@ async def import_single_task(
             correct_answer_key=data.correct_answer_key,
             fipi_criteria=data.fipi_criteria,
             source_url=data.source_url,
+            exam_position=data.exam_position,
+            difficulty_level=data.difficulty_level,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -99,6 +101,8 @@ async def list_tasks(
     subject_id: UUID | None = None,
     theme_id: UUID | None = None,
     task_type: str | None = None,
+    offset: int = 0,
+    limit: int = 100,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_role("TUTOR")),
 ):
@@ -110,15 +114,23 @@ async def list_tasks(
     if task_type:
         query = query.where(Task.type == task_type)
 
-    result = await db.execute(query.limit(100))
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar() or 0
+
+    result = await db.execute(query.offset(offset).limit(limit))
     tasks = result.scalars().all()
-    return [
-        {
-            "id": t.id,
-            "type": t.type,
-            "theme_id": t.theme_id,
-            "text_preview": t.text_content.get("text", "")[:100] if isinstance(t.text_content, dict) else str(t.text_content)[:100],
-            "source_url": t.source_url,
-        }
-        for t in tasks
-    ]
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "tasks": [
+            {
+                "id": str(t.id),
+                "type": t.type,
+                "theme_id": str(t.theme_id),
+                "text_preview": t.text_content.get("text", "")[:100] if isinstance(t.text_content, dict) else str(t.text_content)[:100],
+                "source_url": t.source_url,
+            }
+            for t in tasks
+        ],
+    }

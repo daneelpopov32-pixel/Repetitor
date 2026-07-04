@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.models import User, Profile, TutorStudent, InvitationCode, Tenant
 from app.utils.security import hash_password, verify_password, create_access_token, create_refresh_token

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Task, Theme, Test, TestTask
 from app.services.ege_template import EGE_HISTORY_TEMPLATE
+from app.services.kim_mapping import POSITION_LEVELS
 
 
 async def generate_ege_variant(
@@ -35,17 +36,28 @@ async def generate_ege_variant(
         pos_num = position["position"]
         allowed_types = position["allowed_types"]
         allowed_subtypes = position.get("allowed_subtypes", [])
+        required_level = POSITION_LEVELS.get(pos_num)
 
         # Query tasks matching the position requirements
         query = select(Task).where(Task.type.in_(allowed_types))
 
-        # For essay tasks, we need fipi_criteria (ESSAY tasks with criteria)
+        # For essay tasks, we need fipi_criteria
         if "ESSAY" in allowed_types:
             query = query.where(Task.fipi_criteria.isnot(None))
 
-        # Execute query
-        result = await db.execute(query)
-        candidates = result.scalars().all()
+        # Try to match by exam_position first
+        if required_level:
+            pos_query = query.where(Task.exam_position == pos_num)
+            result = await db.execute(pos_query.limit(50))
+            candidates = result.scalars().all()
+
+            # If not enough by position, fall back to subtype matching
+            if len(candidates) < 3:
+                result = await db.execute(query.limit(100))
+                candidates = list(result.scalars().all())
+        else:
+            result = await db.execute(query.limit(100))
+            candidates = list(result.scalars().all())
 
         # Filter by subtype if available in metadata
         if allowed_subtypes:
@@ -57,13 +69,19 @@ async def generate_ege_variant(
             if filtered:
                 candidates = filtered
 
+        # Prefer tasks with matching difficulty level
+        if required_level:
+            level_matched = [t for t in candidates if t.difficulty_level == required_level]
+            if level_matched:
+                candidates = level_matched
+
         # Exclude already used tasks
         candidates = [t for t in candidates if str(t.id) not in used_task_ids]
 
         if not candidates:
             warnings.append(
-                f"Позиция {pos_num}: нет подходящих заданий в базе "
-                f"(тип: {allowed_types}, подтипы: {allowed_subtypes})"
+                f"Позиция {pos_num}: нет подходящих заданий "
+                f"(тип: {allowed_types}, уровень: {required_level})"
             )
             continue
 

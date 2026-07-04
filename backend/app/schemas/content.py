@@ -11,6 +11,8 @@ class TaskImportRequest(BaseModel):
     correct_answer_key: dict | None = None
     fipi_criteria: list[dict] | None = None
     source_url: str | None = None
+    exam_position: int | None = None  # 1-21
+    difficulty_level: str | None = None  # Б, П, В
 
 
 class TaskImportResponse(BaseModel):

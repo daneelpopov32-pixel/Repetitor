@@ -1,4 +1,3 @@
-import random
 from uuid import UUID
 from datetime import datetime
 
@@ -6,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Test, TestTask, TestAssignment, Task, Attempt, Answer, TutorStudent
+from app.models import Test, TestTask, TestAssignment, Task, Attempt, Answer, Theme
 
 
 async def create_test(db: AsyncSession, tutor_id: UUID, data: dict) -> dict:
@@ -109,6 +108,16 @@ async def get_attempt_tasks(db: AsyncSession, attempt_id: UUID) -> dict:
         .order_by(TestTask.order_number)
     )
     items = result.scalars().all()
+
+    # Get theme names for all tasks
+    theme_ids = list({tt.task.theme_id for tt in items if tt.task.theme_id})
+    theme_map = {}
+    if theme_ids:
+        themes_result = await db.execute(
+            select(Theme).where(Theme.id.in_(theme_ids))
+        )
+        theme_map = {t.id: t.name for t in themes_result.scalars().all()}
+
     return {
         "attempt_id": attempt.id,
         "tasks": [
@@ -117,6 +126,10 @@ async def get_attempt_tasks(db: AsyncSession, attempt_id: UUID) -> dict:
                 "order_number": tt.order_number,
                 "type": tt.task.type,
                 "text_content": tt.task.text_content,
+                "exam_position": tt.task.exam_position,
+                "difficulty_level": tt.task.difficulty_level,
+                "block_id": (tt.task.metadata_ or {}).get("fipi_guid", ""),
+                "theme_name": theme_map.get(tt.task.theme_id, ""),
             }
             for tt in items
         ],
