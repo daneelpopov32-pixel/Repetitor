@@ -21,6 +21,7 @@ export default function NewTestPage() {
   const [taskType, setTaskType] = useState("TEST");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingCounts, setLoadingCounts] = useState(false);
 
   // Async creation state
   const [creating, setCreating] = useState(false);
@@ -28,6 +29,11 @@ export default function NewTestPage() {
   const [progress, setProgress] = useState<any>(null);
   const [result, setResult] = useState<any>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
+
+  // EGE generation state
+  const [egeLoading, setEgeLoading] = useState(false);
+  const [egeResult, setEgeResult] = useState<any>(null);
+  const [egeError, setEgeError] = useState("");
 
   useEffect(() => {
     if (!hydrated) return;
@@ -57,18 +63,37 @@ export default function NewTestPage() {
     setSelectedThemes([]);
     setError("");
     setResult(null);
+    setLoadingCounts(true);
+    setThemeTree([]);
+    setTaskCounts({});
+
+    // Step 1: Load theme tree immediately
     try {
-      const [treeData, countsData] = await Promise.all([
-        api.getThemeTree(subjectId, auth.token!),
-        api.getThemeTaskCounts(subjectId, auth.token!),
-      ]);
+      const treeData = await api.getThemeTree(subjectId, auth.token!);
       setThemeTree(treeData.themes || []);
-      const counts: Record<string, { test: number; essay: number }> = {};
-      for (const c of countsData) {
-        counts[c.theme_id] = { test: c.test_count, essay: c.essay_count };
+    } catch (e: any) {
+      console.error("Failed to load theme tree:", e);
+      setLoadingCounts(false);
+      return;
+    }
+
+    // Step 2: Load FIPI counts separately (may be slow)
+    try {
+      const fipiCounts = await api.getFipiCounts(subjectId, auth.token!);
+      const counts: Record<string, { test: number; essay: number; error?: string }> = {};
+      for (const c of fipiCounts) {
+        if (c.fipi_code) {
+          counts[c.fipi_code] = { test: c.test_count, essay: c.essay_count, error: c.error };
+        }
+        if (c.theme_id) {
+          counts[c.theme_id] = { test: c.test_count, essay: c.essay_count, error: c.error };
+        }
       }
       setTaskCounts(counts);
-    } catch {}
+    } catch (e: any) {
+      console.error("FIPI counts failed, tree still available:", e);
+    }
+    setLoadingCounts(false);
   };
 
   const toggleTheme = (id: string) => {
@@ -115,9 +140,20 @@ export default function NewTestPage() {
     });
   };
 
+  const getCountsForTheme = (node: any): { test: number; essay: number; error?: string } | null => {
+    // Try by fipi_code first, then by theme_id
+    if (node.fipi_code && taskCounts[node.fipi_code]) {
+      return taskCounts[node.fipi_code];
+    }
+    if (taskCounts[node.id]) {
+      return taskCounts[node.id];
+    }
+    return null;
+  };
+
   const renderTree = (nodes: any[], depth = 0) => {
     return nodes.map((node) => {
-      const counts = taskCounts[node.id];
+      const counts = getCountsForTheme(node);
       const totalTasks = (counts?.test || 0) + (counts?.essay || 0);
       const hasChildren = node.children && node.children.length > 0;
       const isExpanded = expandedThemes.has(node.id);
@@ -147,12 +183,27 @@ export default function NewTestPage() {
             </span>
             {counts && totalTasks > 0 && (
               <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
-                ({counts.test} TEST, {counts.essay} ESSAY)
+                (ФИПИ: {counts.test} TEST, {counts.essay} ESSAY)
               </span>
             )}
-            {(!counts || totalTasks === 0) && (
+            {counts && totalTasks === 0 && !counts.error && !loadingCounts && (
               <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
-                (будет загружено)
+                (заданий пока нет)
+              </span>
+            )}
+            {counts && counts.error && !loadingCounts && (
+              <span style={{ fontSize: "0.75rem", color: "var(--danger)" }}>
+                (ошибка загрузки)
+              </span>
+            )}
+            {!counts && !loadingCounts && (
+              <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+                (заданий пока нет)
+              </span>
+            )}
+            {loadingCounts && (
+              <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+                (загрузка...)
               </span>
             )}
           </label>
@@ -222,6 +273,19 @@ export default function NewTestPage() {
         }
       } catch {}
     }, 2000);
+  };
+
+  const handleGenerateEGE = async () => {
+    setEgeLoading(true);
+    setEgeError("");
+    setEgeResult(null);
+    try {
+      const res = await api.generateEGE({}, auth.token!);
+      setEgeResult(res);
+    } catch (e: any) {
+      setEgeError(e.message);
+    }
+    setEgeLoading(false);
   };
 
   if (loading || !hydrated) return <div className="container" style={{ padding: "2rem" }}>Загрузка...</div>;
@@ -323,7 +387,7 @@ export default function NewTestPage() {
           </div>
           <div className="form-group">
             <label>Заданий на тему</label>
-            <input type="number" value={countPerTheme} onChange={(e) => setCountPerTheme(e.target.value)} min="1" max="20" disabled={creating} />
+            <input type="number" value={countPerTheme} onChange={(e) => setCountPerTheme(e.target.value)} min="1" disabled={creating} />
           </div>
         </div>
         <div className="form-group">
@@ -353,7 +417,7 @@ export default function NewTestPage() {
         </div>
       </div>
 
-      {selectedSubject && themeTree.length === 0 && (
+      {selectedSubject && themeTree.length === 0 && !loadingCounts && (
         <div className="card" style={{ textAlign: "center", padding: "2rem" }}>
           <p style={{ color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Кодификатор тем не загружен</p>
           <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
@@ -366,6 +430,7 @@ export default function NewTestPage() {
         <div className="card">
           <h3 style={{ marginBottom: "1rem" }}>
             Темы <span style={{ fontWeight: 400, fontSize: "0.875rem" }}>(выбрано: {selectedThemes.length})</span>
+            {loadingCounts && <span style={{ fontWeight: 400, fontSize: "0.75rem", color: "var(--text-secondary)", marginLeft: "0.5rem" }}>Загрузка данных ФИПИ...</span>}
           </h3>
           <div style={{ maxHeight: 400, overflow: "auto" }}>{renderTree(themeTree)}</div>
         </div>
@@ -390,6 +455,41 @@ export default function NewTestPage() {
             Отмена
           </button>
         </div>
+      </div>
+
+      {/* EGE Generator section */}
+      <div className="card" style={{ marginTop: "1.5rem" }}>
+        <h3 style={{ marginBottom: "0.5rem" }}>Генератор варианта ЕГЭ</h3>
+        <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
+          Автоматически соберёт полный вариант из 21 задания по структуре реального экзамена (210 минут).
+          Задания берутся из локальной базы — сначала запустите синхронизацию с ФИПИ.
+        </p>
+        {egeResult && (
+          <div style={{ padding: "0.75rem", background: "#dcfce7", border: "1px solid #bbf7d0", borderRadius: "var(--radius)", color: "#166534", marginBottom: "1rem", fontSize: "0.875rem" }}>
+            Вариант создан: <strong>{egeResult.title}</strong> ({egeResult.tasks_count} заданий, {egeResult.time_limit_minutes} мин)
+            {egeResult.warnings?.length > 0 && (
+              <div style={{ marginTop: "0.5rem", color: "var(--danger)" }}>
+                {egeResult.warnings.map((w: string, i: number) => <div key={i}>{w}</div>)}
+              </div>
+            )}
+            <div style={{ marginTop: "0.5rem" }}>
+              <Link href={`/tests/${egeResult.test_id}`} style={{ fontWeight: 500 }}>Открыть тест →</Link>
+            </div>
+          </div>
+        )}
+        {egeError && (
+          <div style={{ padding: "0.75rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "var(--radius)", color: "var(--danger)", marginBottom: "1rem", fontSize: "0.875rem" }}>
+            {egeError}
+          </div>
+        )}
+        <button
+          className="btn btn-primary"
+          onClick={handleGenerateEGE}
+          disabled={egeLoading}
+          style={{ background: "#7c3aed" }}
+        >
+          {egeLoading ? "Генерация..." : "Сгенерировать вариант ЕГЭ"}
+        </button>
       </div>
     </div>
   );

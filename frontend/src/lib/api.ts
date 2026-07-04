@@ -32,6 +32,8 @@ export const api = {
     request<any>(`/themes/tree?subject_id=${subjectId}`, { token }),
   getThemeTaskCounts: (subjectId: string, token: string) =>
     request<any[]>(`/themes/task-counts?subject_id=${subjectId}`, { token }),
+  getFipiCounts: (subjectId: string, token: string) =>
+    request<any[]>(`/themes/fipi-counts?subject_id=${subjectId}`, { token }),
 
   getTests: (params: Record<string, string>, token: string) => {
     const q = new URLSearchParams(params);
@@ -52,6 +54,12 @@ export const api = {
       body: JSON.stringify({ student_ids: studentIds }),
       token,
     }),
+  getTestAssignments: (testId: string, token: string) =>
+    request<any[]>(`/tests/${testId}/assignments`, { token }),
+  unassignStudent: (testId: string, studentId: string, token: string) =>
+    request<any>(`/tests/${testId}/assignments/${studentId}`, { method: "DELETE", token }),
+  getStudentAnswers: (testId: string, studentId: string, token: string) =>
+    request<any>(`/tests/${testId}/assignments/${studentId}/answers`, { token }),
   getTutorStudents: (token: string) => request<any[]>("/analytics/tutor/students", { token }),
   createTest: (data: any, token: string) =>
     request<any>("/tests", { method: "POST", body: JSON.stringify(data), token }),
@@ -127,8 +135,28 @@ export const api = {
       body: JSON.stringify({ subject_name: subjectName }),
       token,
     }),
+  syncTheme: (themeCode: string, token: string) =>
+    request<any>("/fipi/sync-theme", {
+      method: "POST",
+      body: JSON.stringify({ theme_code: themeCode }),
+      token,
+    }),
+  syncSubject: (subjectName: string, token: string) =>
+    request<any>("/fipi/sync-subject", {
+      method: "POST",
+      body: JSON.stringify({ subject_name: subjectName }),
+      token,
+    }),
+  getSyncStatus: (token: string) =>
+    request<any[]>("/fipi/sync-status", { token }),
   createTestAsync: (data: { title: string; theme_codes: string[]; count_per_theme: number; task_type: string; time_limit_minutes?: number }, token: string) =>
     request<any>("/fipi/create-test", {
+      method: "POST",
+      body: JSON.stringify(data),
+      token,
+    }),
+  generateEGE: (data: { title?: string; time_limit_minutes?: number }, token: string) =>
+    request<any>("/fipi/generate-ege", {
       method: "POST",
       body: JSON.stringify(data),
       token,

@@ -6,9 +6,7 @@ import re
 from copy import copy
 import httpx
 from bs4 import BeautifulSoup
-import json
 import logging
-from datetime import datetime
 
 from celery import Celery
 from app.config import settings
@@ -42,42 +40,78 @@ HEADERS = {
 
 FIPI_PROJECT_ID = "068A227D253BA6C04D0C832387FD0D89"
 
-CODIFIER_THEMES = {
-    "1.": "Древний мир",
-    "2.": "Россия в IX - начале XII в.",
-    "3.": "Россия в XII - XV вв.",
-    "4.": "Россия в XVI - XVII вв.",
-    "5.": "Россия в XVIII в.",
-    "6.": "Россия в первой половине XIX в.",
-    "7.": "Россия во второй половине XIX в.",
-    "7.1.": "Отмена крепостного права",
-    "7.2.": "Реформы Александра II",
-    "7.3.": "Культура второй половины XIX в.",
-    "7.4.": "Экономика второй половины XIX в.",
-    "7.5.": "Общественное движение",
-    "7.6.": "Политический строй",
-    "7.7.": "Россия в 1917-1941 гг.",
-    "7.8.": "Великая Отечественная война",
-    "7.9.": "Послевоенная Россия",
-    "8.": "Россия в 1990-2000-х гг.",
-    "8.1.": "Перестройка",
-    "8.2.": "Распад СССР",
-    "8.3.": "Россия в 1990-е годы",
-    "8.4.": "Россия в 2000-е годы",
-    "9.": "Всеобщая история",
-    "9.1.": "Древний мир (всеобщая)",
-    "9.2.": "Средние века (всеобщая)",
-    "9.3.": "Новое время",
-    "9.4.": "Новейшее время",
-    "10.": "Право",
-    "10.1.": "Конституционное право",
-    "10.2.": "Уголовное право",
-    "11.": "Обществознание",
-    "11.1.": "Человек и общество",
-    "11.2.": "Экономика",
-    "12.": "География",
-    "12.1.": "Физическая география",
-    "12.2.": "Экономическая география",
+# History codifier — official 2025 (ИС-11 ЕГЭ, Таблица 3)
+# Positions 1-6: combined from ОГЭ, FIPI has individual codes 1,2,3,4,5,6
+# Positions 7-12: detailed sub-themes
+CODIFIER_THEMES_HISTORY = {
+    "1": "История России. Древнейший период",
+    "2": "История России. Средние века",
+    "3": "История России. XVI – XVII вв.",
+    "4": "История России. XVIII в.",
+    "5": "История России. Первая половина XIX в.",
+    "6": "История России. Вторая половина XIX в.",
+    "7": "История России. 1914–1945 гг.",
+    "7.1": "Россия в Первой мировой войне (1914–1918)",
+    "7.2": "1917 год: от Февраля к Октябрю",
+    "7.3": "Первые революционные преобразования большевиков",
+    "7.4": "Гражданская война и её последствия",
+    "7.5": "Идеология и культура Советской России периода Гражданской войны",
+    "7.6": "СССР в годы нэпа (1921–1928)",
+    "7.7": "Советский Союз в 1929–1941 гг.",
+    "7.8": "Культурное пространство советского общества в 1920–1930-е гг.",
+    "7.9": "Внешняя политика СССР в 1920–1930-е гг.",
+    "8": "Великая Отечественная война (1941–1945)",
+    "8.1": "Первый период войны (июнь 1941 – осень 1942 г.)",
+    "8.2": "Коренной перелом в ходе войны (осень 1942 – 1943 г.)",
+    "8.3": "Человек и война: единство фронта и тыла",
+    "8.4": "Победа СССР в Великой Отечественной войне. Окончание Второй мировой войны (1944–сентябрь 1945 г.)",
+    "9": "СССР в 1945–1991 гг.",
+    "9.1": "СССР в 1945–1953 гг.",
+    "9.2": "СССР в середине 1950-х – первой половине 1960-х гг.",
+    "9.3": "Советское государство и общество в середине 1960-х – начале 1980-х гг.",
+    "9.4": "Политика перестройки. Распад СССР (1985–1991)",
+    "10": "Российская Федерация в 1992–2022 гг.",
+    "10.1": "Становление новой России (1992–1999)",
+    "10.2": "Россия в XXI в.: вызовы времени и задачи модернизации",
+    "11": "Всеобщая история. 1914–1945 гг.",
+    "11.1": "Мир накануне и в годы Первой мировой войны",
+    "11.2": "Мир в 1918–1939 гг.",
+    "11.3": "Вторая мировая война",
+    "12": "Всеобщая история. 1945–2022 гг.",
+    "12.1": "Страны Северной Америки и Европы во второй половине XX – начале XXI в.",
+    "12.2": "Страны Азии, Африки во второй половине XX – начале XXI в.",
+    "12.3": "Страны Латинской Америки во второй половине XX – начале XXI в.",
+    "12.4": "Международные отношения во второй половине XX – начале XXI в.",
+    "12.5": "Развитие науки и культуры во второй половине XX – начале XXI в.",
+    "12.6": "Современный мир",
+}
+
+# Social studies codifier (separate from History)
+CODIFIER_THEMES_SOCIAL = {
+    "1.": "Человек и общество",
+    "1.1.": "Понятие личности",
+    "1.2.": "Общественные ценности",
+    "2.": "Экономика",
+    "2.1.": "Экономические системы",
+    "2.2.": "Рыночная экономика",
+    "3.": "Социальная сфера",
+    "3.1.": "Социальные группы",
+    "3.2.": "Семья",
+    "4.": "Политическая сфера",
+    "4.1.": "Формы правления",
+    "4.2.": "Политические партии",
+    "5.": "Правовая сфера",
+    "5.1.": "Конституционное право",
+    "5.2.": "Уголовное право",
+    "6.": "Духовная сфера",
+    "6.1.": "Культура",
+    "6.2.": "Религия",
+}
+
+# Mapping: subject name -> codifier dict
+SUBJECT_CODIFIERS = {
+    "История": CODIFIER_THEMES_HISTORY,
+    "Обществознание": CODIFIER_THEMES_SOCIAL,
 }
 
 
@@ -432,24 +466,93 @@ def _build_text_content(task_data):
     return text_content
 
 
-def _fetch_tasks_for_theme(theme_code, needed_count, task_type=None):
+def _fetch_tasks_for_theme(theme_code, needed_count=None, task_type=None):
+    """Fetch tasks from FIPI by paginating through all available pages.
+
+    Uses pagesize=10 (FIPI returns 0 results for pagesize >= 50).
+    If needed_count is None, fetches ALL available tasks.
+    Stops when: enough tasks collected, or empty page reached, or 100 pages max.
+    """
+    import time
+
+    all_tasks = []
+    page = 1
+    max_pages = 100  # safety limit (100 pages × 10 per page = 1000 max)
+
     with httpx.Client(timeout=30, follow_redirects=True, verify=False) as client:
-        resp = client.post(
-            f"{BASE_URL}/questions.php",
-            data={"search": "1", "pagesize": "100", "proj": FIPI_PROJECT_ID, "theme": theme_code, "page": "1"},
-            headers=HEADERS,
-        )
-        html = resp.content.decode("windows-1251", errors="replace")
-        all_tasks = _extract_tasks_from_html(html)
-        if task_type and task_type != "MIX":
-            all_tasks = [t for t in all_tasks if t.get("type") == task_type]
+        while page <= max_pages:
+            resp = client.post(
+                f"{BASE_URL}/questions.php",
+                data={
+                    "search": "1",
+                    "pagesize": "10",
+                    "proj": FIPI_PROJECT_ID,
+                    "theme": theme_code,
+                    "page": str(page),
+                },
+                headers=HEADERS,
+            )
+            html = resp.content.decode("windows-1251", errors="replace")
+            page_tasks = _extract_tasks_from_html(html)
+
+            if not page_tasks:
+                break  # no more tasks on this theme
+
+            all_tasks.extend(page_tasks)
+
+            if needed_count and len(all_tasks) >= needed_count:
+                break
+
+            page += 1
+            time.sleep(0.5)  # polite delay between requests
+
+    if task_type and task_type != "MIX":
+        all_tasks = [t for t in all_tasks if t.get("type") == task_type]
+
+    if needed_count:
         return all_tasks[:needed_count]
+    return all_tasks
+
+
+def _save_tasks_to_db(db, theme, fetched_tasks):
+    """Save fetched tasks to DB with deduplication. Returns count of new tasks added."""
+    from app.services.content_parser import compute_text_hash
+
+    added = 0
+    for task_data in fetched_tasks:
+        text_content = _build_text_content(task_data)
+        text_hash = compute_text_hash(text_content)
+
+        existing = db.query(Task).filter(
+            Task.metadata_["text_hash"].as_string() == text_hash
+        ).first()
+        if existing:
+            continue
+
+        task = Task(
+            subject_id=theme.subject_id,
+            theme_id=theme.id,
+            type=task_data["type"],
+            text_content=text_content,
+            correct_answer_key=None,
+            fipi_criteria=None,
+            source_url=f"{BASE_URL}/questions.php?proj={FIPI_PROJECT_ID}&theme={theme.fipi_code}",
+            metadata_={
+                "text_hash": text_hash,
+                "fipi_guid": task_data.get("guid"),
+                "subtype": task_data.get("subtype"),
+            },
+        )
+        db.add(task)
+        added += 1
+
+    db.commit()
+    return added
 
 
 @celery_app.task(bind=True, name="sync_codifier")
 def sync_codifier(self, subject_name="История"):
     from app.models import Subject, Theme
-    from app.services.content_parser import compute_text_hash
     db = _get_sync_session()
     try:
         subject = db.query(Subject).filter(Subject.name == subject_name).first()
@@ -458,17 +561,103 @@ def sync_codifier(self, subject_name="История"):
             db.add(subject)
             db.flush()
 
+        codifier = SUBJECT_CODIFIERS.get(subject_name, CODIFIER_THEMES_HISTORY)
+
         created = 0
-        for code, name in CODIFIER_THEMES.items():
+        for code, name in codifier.items():
             existing = db.query(Theme).filter(Theme.subject_id == subject.id, Theme.fipi_code == code).first()
             if not existing:
                 db.add(Theme(subject_id=subject.id, fipi_code=code, name=name))
                 created += 1
 
         db.commit()
-        return {"created": created, "total": len(CODIFIER_THEMES)}
+        return {"created": created, "total": len(codifier)}
     finally:
         db.close()
+
+
+@celery_app.task(bind=True, name="sync_theme_full")
+def sync_theme_full(self, theme_code):
+    """Full sync: fetch ALL tasks from FIPI for a single theme.
+
+    Incremental: skips tasks that already exist (by content hash).
+    Reports progress with counts.
+    """
+    from app.models import Theme, Task
+
+    db = _get_sync_session()
+    try:
+        theme = db.query(Theme).filter(Theme.fipi_code == theme_code).first()
+        if not theme:
+            return {"error": f"Theme {theme_code} not found in DB"}
+
+        existing_count = db.query(Task).filter(Task.theme_id == theme.id).count()
+
+        self.update_state(state="PROGRESS", meta={
+            "status": f"Загрузка заданий по теме {theme_code}...",
+            "existing": existing_count,
+        })
+
+        fetched = _fetch_tasks_for_theme(theme_code, needed_count=None)
+
+        self.update_state(state="PROGRESS", meta={
+            "status": f"Найдено {len(fetched)} заданий на ФИПИ, сохраняем...",
+            "existing": existing_count,
+            "fetched": len(fetched),
+        })
+
+        added = _save_tasks_to_db(db, theme, fetched)
+        total = db.query(Task).filter(Task.theme_id == theme.id).count()
+
+        return {
+            "theme_code": theme_code,
+            "theme_name": theme.name,
+            "fetched_from_fipi": len(fetched),
+            "added_new": added,
+            "skipped_duplicates": len(fetched) - added,
+            "total_in_db": total,
+        }
+    finally:
+        db.close()
+
+
+@celery_app.task(bind=True, name="sync_subject_full")
+def sync_subject_full(self, subject_name="История"):
+    """Full sync for all themes of a subject. Reports per-theme progress."""
+    from app.models import Theme
+
+    codifier = SUBJECT_CODIFIERS.get(subject_name, CODIFIER_THEMES_HISTORY)
+    db = _get_sync_session()
+    try:
+        subject = db.query(Theme).filter(Theme.fipi_code == list(codifier.keys())[0]).first()
+        if not subject:
+            return {"error": f"Subject {subject_name} not found"}
+
+        themes = db.query(Theme).filter(Theme.subject_id == subject.subject_id).all()
+        theme_codes = [t.fipi_code for t in themes]
+    finally:
+        db.close()
+
+    results = {}
+    for i, code in enumerate(theme_codes):
+        self.update_state(state="PROGRESS", meta={
+            "current": i + 1,
+            "total": len(theme_codes),
+            "theme": code,
+        })
+        result = sync_theme_full(code)
+        results[code] = result
+
+    total_added = sum(r.get("added_new", 0) for r in results.values() if isinstance(r, dict))
+    total_fetched = sum(r.get("fetched_from_fipi", 0) for r in results.values() if isinstance(r, dict))
+
+    return {
+        "subject": subject_name,
+        "themes_processed": len(theme_codes),
+        "total_fetched": total_fetched,
+        "total_added": total_added,
+        "per_theme": results,
+    }
 
 
 @celery_app.task(bind=True, name="fetch_fipi_tasks")
@@ -527,82 +716,80 @@ def fetch_fipi_tasks(self, theme_codes, count_per_theme=5, task_type="TEST"):
 
 @celery_app.task(bind=True, name="create_test_from_fipi")
 def create_test_from_fipi(self, tutor_id, title, theme_codes, count_per_theme, task_type, time_limit_minutes=None):
+    """Create a test from LOCAL database only. No live FIPI requests."""
     from app.models import Theme, Task, Test, TestTask
-    from app.services.content_parser import compute_text_hash
-    import time
-
-    self.update_state(state="PROGRESS", meta={"stage": "fetching", "status": "Ищем задания на ФИПИ..."})
-
-    # Fetch tasks
-    results = {}
-    for i, theme_code in enumerate(theme_codes):
-        self.update_state(state="PROGRESS", meta={"stage": "fetching", "status": f"Обработка темы {theme_code} ({i+1}/{len(theme_codes)})..."})
-        db = _get_sync_session()
-        try:
-            theme = db.query(Theme).filter(Theme.fipi_code == theme_code).first()
-            if not theme:
-                results[theme_code] = []
-                continue
-
-            existing = db.query(Task).filter(Task.theme_id == theme.id).count()
-            needed = max(0, count_per_theme - existing)
-
-            if needed == 0:
-                tasks = db.query(Task).filter(Task.theme_id == theme.id).limit(count_per_theme).all()
-                results[theme_code] = [{"id": str(t.id), "type": t.type} for t in tasks]
-                continue
-
-            fetched = _fetch_tasks_for_theme(theme_code, needed, task_type)
-            for task_data in fetched:
-                text_content = _build_text_content(task_data)
-
-                text_hash = compute_text_hash(text_content)
-                if db.query(Task).filter(Task.metadata_["text_hash"].as_string() == text_hash).first():
-                    continue
-
-                task = Task(
-                    subject_id=theme.subject_id, theme_id=theme.id, type=task_data["type"],
-                    text_content=text_content, correct_answer_key=None, fipi_criteria=None,
-                    source_url=f"{BASE_URL}/questions.php?proj={FIPI_PROJECT_ID}&theme={theme_code}",
-                    metadata_={"text_hash": text_hash, "fipi_guid": task_data.get("guid"), "subtype": task_data.get("subtype")},
-                )
-                db.add(task)
-
-            db.commit()
-            tasks = db.query(Task).filter(Task.theme_id == theme.id).limit(count_per_theme).all()
-            results[theme_code] = [{"id": str(t.id), "type": t.type} for t in tasks]
-            time.sleep(1.5)
-        except Exception as e:
-            logger.error(f"Error: {e}")
-            results[theme_code] = []
-        finally:
-            db.close()
-
-    # Collect task IDs
-    all_task_ids = []
-    theme_stats = {}
-    for theme_code, tasks in results.items():
-        theme_stats[theme_code] = len(tasks)
-        for t in tasks:
-            if t.get("id"):
-                all_task_ids.append(t["id"])
-
-    self.update_state(state="PROGRESS", meta={"stage": "creating", "status": f"Найдено {len(all_task_ids)} заданий. Создаём тест...", "tasks_found": len(all_task_ids), "theme_stats": theme_stats})
-
-    # Create test
     from uuid import UUID
+    import random
+
     db = _get_sync_session()
     try:
+        selected_task_ids = []
+        theme_stats = {}
+        warnings = []
+
+        for theme_code in theme_codes:
+            theme = db.query(Theme).filter(Theme.fipi_code == theme_code).first()
+            if not theme:
+                warnings.append(f"Тема {theme_code} не найдена в базе")
+                theme_stats[theme_code] = 0
+                continue
+
+            query = db.query(Task).filter(Task.theme_id == theme.id)
+            if task_type and task_type != "MIX":
+                query = query.filter(Task.type == task_type)
+
+            available = query.all()
+            available_count = len(available)
+
+            if available_count == 0:
+                warnings.append(f"Тема {theme_code}: нет заданий в базе (нужна синхронизация)")
+                theme_stats[theme_code] = 0
+                continue
+
+            take = min(count_per_theme, available_count)
+            if take < count_per_theme:
+                warnings.append(
+                    f"Тема {theme_code}: доступно {available_count} заданий, "
+                    f"запрошено {count_per_theme} (взято {take})"
+                )
+
+            chosen = random.sample(available, take)
+            for t in chosen:
+                selected_task_ids.append(str(t.id))
+            theme_stats[theme_code] = take
+
+        self.update_state(state="PROGRESS", meta={
+            "stage": "creating",
+            "status": f"Собрано {len(selected_task_ids)} заданий из локальной базы...",
+            "tasks_found": len(selected_task_ids),
+            "theme_stats": theme_stats,
+        })
+
+        if not selected_task_ids:
+            return {
+                "error": "Нет заданий в локальной базе. Запустите синхронизацию с ФИПИ.",
+                "warnings": warnings,
+            }
+
         test = Test(tutor_id=UUID(tutor_id), title=title, time_limit_minutes=time_limit_minutes)
         db.add(test)
         db.flush()
 
-        for i, task_id in enumerate(all_task_ids):
+        random.shuffle(selected_task_ids)
+        for i, task_id in enumerate(selected_task_ids):
             db.add(TestTask(test_id=test.id, task_id=UUID(task_id), order_number=i + 1))
 
         db.commit()
         db.refresh(test)
 
-        return {"test_id": str(test.id), "title": test.title, "tasks_count": len(all_task_ids), "theme_stats": theme_stats}
+        result = {
+            "test_id": str(test.id),
+            "title": test.title,
+            "tasks_count": len(selected_task_ids),
+            "theme_stats": theme_stats,
+        }
+        if warnings:
+            result["warnings"] = warnings
+        return result
     finally:
         db.close()

@@ -21,6 +21,8 @@ export default function TestDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [currentIdx, setCurrentIdx] = useState(0);
+  const [viewMode, setViewMode] = useState<"single" | "list">("list");
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!hydrated) return;
@@ -85,6 +87,11 @@ export default function TestDetailPage() {
     return instructionLines.join(" ") || text;
   };
 
+  const getShortText = (task: any): string => {
+    const text = getTaskText(task);
+    return text.length > 80 ? text.slice(0, 80) + "..." : text;
+  };
+
   const getLeftTitle = (task: any): string => {
     const text = getTaskText(task);
     const possibleTitles = ["СОБЫТИЕ", "СОБЫТИЯ", "ПРОЦЕССЫ", "ФАКТЫ", "ГОД", "ГОДЫ",
@@ -106,6 +113,83 @@ export default function TestDetailPage() {
     return "ПРАВЫЙ СТОЛБЕЦ";
   };
 
+  const toggleExpand = (taskId: string) => {
+    setExpandedTasks((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
+
+  const renderTaskContent = (task: any, expanded: boolean) => {
+    const tc = task.text_content;
+    const isMatching = tc?.matching_left && tc?.matching_right;
+    const isSequence = tc?.sequence_items;
+
+    return (
+      <div style={{ marginTop: expanded ? "0.75rem" : 0 }}>
+        {/* Instruction */}
+        <div style={{ fontSize: "0.875rem", lineHeight: 1.5, marginBottom: "0.5rem" }}>
+          {expanded ? getInstruction(task) : getShortText(task)}
+        </div>
+
+        {/* Content: Matching */}
+        {expanded && isMatching && (
+          <div style={{ display: "flex", gap: "2rem", marginTop: "0.75rem" }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, textAlign: "center", marginBottom: "0.5rem", fontSize: "0.8rem" }}>
+                {getLeftTitle(task)}
+              </div>
+              {tc.matching_left.map((item: any, j: number) => (
+                <div key={j} style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>
+                  {item.label}) {item.text}
+                </div>
+              ))}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, textAlign: "center", marginBottom: "0.5rem", fontSize: "0.8rem" }}>
+                {getRightTitle(task)}
+              </div>
+              {tc.matching_right.map((item: any, j: number) => (
+                <div key={j} style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>
+                  {item.label}) {item.text}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Content: Sequence */}
+        {expanded && isSequence && (
+          <ol style={{ paddingLeft: "1.25rem", marginTop: "0.75rem" }}>
+            {tc.sequence_items.map((item: any, j: number) => (
+              <li key={j} style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>{item.text}</li>
+            ))}
+          </ol>
+        )}
+
+        {/* Content: Default options */}
+        {expanded && !isMatching && !isSequence && (() => {
+          const opts = tc?.options;
+          if (opts && Array.isArray(opts) && opts.length > 0) {
+            const flatOpts = Array.isArray(opts[0]) ? opts[0] : opts;
+            return (
+              <div style={{ marginTop: "0.75rem" }}>
+                {flatOpts.map((opt: string, i: number) => (
+                  <div key={i} style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>
+                    {String.fromCharCode(65 + i)}) {opt}
+                  </div>
+                ))}
+              </div>
+            );
+          }
+          return null;
+        })()}
+      </div>
+    );
+  };
+
   if (loading || !hydrated) {
     return <div className="test-screen"><div className="task-card" style={{ textAlign: "center" }}>Загрузка...</div></div>;
   }
@@ -124,9 +208,6 @@ export default function TestDetailPage() {
   }
 
   const currentTask = test.tasks?.[currentIdx];
-  const tc = currentTask?.text_content;
-  const isMatching = tc?.matching_left && tc?.matching_right;
-  const isSequence = tc?.sequence_items;
 
   return (
     <div className="test-screen">
@@ -163,115 +244,136 @@ export default function TestDetailPage() {
             {test.assignments.map((a: any) => (
               <span key={a.student_id} style={{ fontSize: "0.8rem", padding: "0.2rem 0.6rem", borderRadius: "9999px", background: STATUS_LABELS[a.status]?.color || "#f1f5f9" }}>
                 {a.student_name || a.student_id.slice(0, 8)}: {STATUS_LABELS[a.status]?.label || a.status}
+                {a.progress_percent != null ? ` (${a.progress_percent}%)` : ""}
               </span>
             ))}
           </div>
         </div>
       )}
 
-      {/* Navigation */}
-      {test.tasks?.length > 0 && (
-        <div className="task-navigation">
-          <button className="nav-button" disabled={currentIdx === 0} onClick={() => setCurrentIdx((i) => i - 1)}>
-            ← Предыдущее
-          </button>
-          <span className="task-counter">Задание {currentIdx + 1} из {test.tasks.length}</span>
-          <button className="nav-button" disabled={currentIdx === test.tasks.length - 1} onClick={() => setCurrentIdx((i) => i + 1)}>
-            Следующее →
-          </button>
-        </div>
-      )}
+      {/* View mode toggle */}
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+        <button
+          className={`btn ${viewMode === "single" ? "btn-primary" : ""}`}
+          style={viewMode !== "single" ? { background: "var(--border)", color: "var(--text)" } : {}}
+          onClick={() => setViewMode("single")}
+        >
+          По одному
+        </button>
+        <button
+          className={`btn ${viewMode === "list" ? "btn-primary" : ""}`}
+          style={viewMode !== "list" ? { background: "var(--border)", color: "var(--text)" } : {}}
+          onClick={() => setViewMode("list")}
+        >
+          Список
+        </button>
+      </div>
 
-      {/* Task Card */}
-      {currentTask && (
-        <div className="task-card">
-          {/* Header */}
-          <div className="task-header">
-            <span className="task-type-badge">
-              Тип {currentTask.order_number || currentIdx + 1} № {currentTask.block_id || currentTask.task_id?.slice(0, 8)}
-            </span>
-            <span style={{ fontSize: "0.8rem", color: "#666" }}>{currentTask.type}</span>
-          </div>
+      {/* Single view */}
+      {viewMode === "single" && (
+        <>
+          {test.tasks?.length > 0 && (
+            <div className="task-navigation">
+              <button className="nav-button" disabled={currentIdx === 0} onClick={() => setCurrentIdx((i) => i - 1)}>
+                ← Предыдущее
+              </button>
+              <span className="task-counter">Задание {currentIdx + 1} из {test.tasks.length}</span>
+              <button className="nav-button" disabled={currentIdx === test.tasks.length - 1} onClick={() => setCurrentIdx((i) => i + 1)}>
+                Следующее →
+              </button>
+            </div>
+          )}
 
-          {/* Instruction */}
-          <div className="task-instruction">{getInstruction(currentTask)}</div>
+          {currentTask && (
+            <div className="task-card">
+              <div className="task-header">
+                <span className="task-type-badge">
+                  {currentTask.order_number || currentIdx + 1}
+                  {currentTask.fipi_code ? ` (${currentTask.fipi_code})` : ""}
+                </span>
+                <span style={{ fontSize: "0.8rem", color: "#666" }}>{currentTask.type}</span>
+              </div>
 
-          {/* Content: Matching */}
-          {isMatching && (
-            <div className="task-content matching-layout">
-              <div className="matching-columns">
-                <div className="column left-column">
-                  <div className="column-title">{getLeftTitle(currentTask)}</div>
-                  <div className="column-items">
-                    {tc.matching_left.map((item: any, j: number) => (
-                      <div key={j} className="item">{item.label}) {item.text}</div>
-                    ))}
-                  </div>
-                </div>
-                <div className="column right-column">
-                  <div className="column-title">{getRightTitle(currentTask)}</div>
-                  <div className="column-items">
-                    {tc.matching_right.map((item: any, j: number) => (
-                      <div key={j} className="item">{item.label}) {item.text}</div>
-                    ))}
-                  </div>
-                </div>
+              {renderTaskContent(currentTask, true)}
+
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid #e0e0e0" }}>
+                <button className="nav-button" style={{ color: "#dc2626", borderColor: "#dc2626" }} onClick={() => removeTask(currentTask.task_id)}>
+                  Удалить задание
+                </button>
               </div>
             </div>
           )}
 
-          {/* Content: Chronology */}
-          {isSequence && (
-            <div className="task-content chronology-layout">
-              <ol className="events-list">
-                {tc.sequence_items.map((item: any, j: number) => (
-                  <li key={j} className="event-item">{item.text}</li>
-                ))}
-              </ol>
+          {test.tasks?.length > 0 && (
+            <div className="task-navigation" style={{ marginTop: "1rem" }}>
+              <button className="nav-button" disabled={currentIdx === 0} onClick={() => setCurrentIdx((i) => i - 1)}>
+                ← Предыдущее
+              </button>
+              <span className="task-counter">Задание {currentIdx + 1} из {test.tasks.length}</span>
+              <button className="nav-button" disabled={currentIdx === test.tasks.length - 1} onClick={() => setCurrentIdx((i) => i + 1)}>
+                Следующее →
+              </button>
             </div>
           )}
-
-          {/* Content: Default */}
-          {!isMatching && !isSequence && (
-            <div className="task-content">
-              {(() => {
-                const opts = tc?.options;
-                if (opts && Array.isArray(opts) && opts.length > 0) {
-                  const flatOpts = Array.isArray(opts[0]) ? opts[0] : opts;
-                  return (
-                    <div>
-                      {flatOpts.map((opt: string, i: number) => (
-                        <div key={i} className="item" style={{ marginBottom: "8px" }}>
-                          {String.fromCharCode(65 + i)}) {opt}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-            </div>
-          )}
-
-          {/* Task footer */}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid #e0e0e0" }}>
-            <button className="nav-button" style={{ color: "#dc2626", borderColor: "#dc2626" }} onClick={() => removeTask(currentTask.task_id)}>
-              Удалить задание
-            </button>
-          </div>
-        </div>
+        </>
       )}
 
-      {/* Bottom navigation */}
-      {test.tasks?.length > 0 && (
-        <div className="task-navigation" style={{ marginTop: "1rem" }}>
-          <button className="nav-button" disabled={currentIdx === 0} onClick={() => setCurrentIdx((i) => i - 1)}>
-            ← Предыдущее
-          </button>
-          <span className="task-counter">Задание {currentIdx + 1} из {test.tasks.length}</span>
-          <button className="nav-button" disabled={currentIdx === test.tasks.length - 1} onClick={() => setCurrentIdx((i) => i + 1)}>
-            Следующее →
-          </button>
+      {/* List view */}
+      {viewMode === "list" && (
+        <div>
+          {test.tasks?.map((task: any, idx: number) => {
+            const isExpanded = expandedTasks.has(task.task_id);
+            return (
+              <div
+                key={task.task_id}
+                className="task-card"
+                style={{ cursor: "pointer", marginBottom: "0.5rem" }}
+                onClick={() => toggleExpand(task.task_id)}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  <span style={{ fontWeight: 600, minWidth: 24 }}>{task.order_number || idx + 1}</span>
+                  <span style={{
+                    fontSize: "0.75rem",
+                    padding: "0.1rem 0.4rem",
+                    borderRadius: "4px",
+                    background: task.fipi_code ? "#e0e7ff" : "#f1f5f9",
+                    color: task.fipi_code ? "#3730a3" : "#64748b",
+                  }}>
+                    {task.fipi_code || "—"}
+                  </span>
+                  <span style={{
+                    fontSize: "0.7rem",
+                    padding: "0.1rem 0.4rem",
+                    borderRadius: "9999px",
+                    background: task.type === "TEST" ? "#dcfce7" : "#fef3c7",
+                    color: task.type === "TEST" ? "#166534" : "#92400e",
+                  }}>
+                    {task.type}
+                  </span>
+                  <span style={{ flex: 1, fontSize: "0.85rem", color: "var(--text)" }}>
+                    {getShortText(task)}
+                  </span>
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+                    {isExpanded ? "▲" : "▼"}
+                  </span>
+                </div>
+
+                {isExpanded && renderTaskContent(task, true)}
+
+                {isExpanded && (
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid #e0e0e0" }}>
+                    <button
+                      className="nav-button"
+                      style={{ color: "#dc2626", borderColor: "#dc2626", fontSize: "0.8rem" }}
+                      onClick={(e) => { e.stopPropagation(); removeTask(task.task_id); }}
+                    >
+                      Удалить задание
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

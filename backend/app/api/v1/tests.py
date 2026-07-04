@@ -5,12 +5,12 @@ from uuid import UUID
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, func, or_, and_, delete
+from sqlalchemy import select, func, or_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import User, Test, TestTask, TestAssignment, Task, Theme, TutorStudent, Attempt
+from app.models import User, Test, TestTask, TestAssignment, Task, Theme, TutorStudent, Attempt, Answer
 from app.utils.deps import require_role
 
 router = APIRouter(prefix="/tests", tags=["Tests"])
@@ -49,12 +49,6 @@ async def list_tests(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_role("TUTOR")),
 ):
-    # Get linked student IDs
-    linked_result = await db.execute(
-        select(TutorStudent.student_id).where(TutorStudent.tutor_id == user.id)
-    )
-    linked_student_ids = [r[0] for r in linked_result.all()]
-
     # Base query
     query = select(Test).where(Test.tutor_id == user.id)
 
@@ -137,7 +131,7 @@ async def list_tests(
             if search.lower() not in t.title.lower():
                 continue
 
-        # Build assignment list with statuses
+        # Build assignment list with statuses and progress
         assignment_list = []
         for a in assignments:
             student_name = ""
@@ -162,11 +156,15 @@ async def list_tests(
                 if attempt_count > 0:
                     status = "viewed"
 
+            progress = await _calc_student_progress(db, t.id, a.student_id, task_count)
+
             assignment_list.append({
+                "assignment_id": str(a.id),
                 "student_id": str(a.student_id),
                 "student_name": student_name,
                 "status": status,
                 "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+                **progress,
             })
 
         out.append({
@@ -250,6 +248,18 @@ async def get_test(
     )
     rows = tasks_result.all()
 
+    # Get total tasks for progress calculation
+    total_tasks = len(rows)
+
+    # Get theme fipi_codes for tasks
+    theme_ids = list({str(t.theme_id) for _, t in rows if t.theme_id})
+    theme_map = {}
+    if theme_ids:
+        themes_result = await db.execute(
+            select(Theme).where(Theme.id.in_([UUID(tid) for tid in theme_ids]))
+        )
+        theme_map = {str(t.id): t.fipi_code for t in themes_result.scalars().all()}
+
     # Get assignments with eager-loaded student and profile
     assign_result = await db.execute(
         select(TestAssignment)
@@ -279,10 +289,15 @@ async def get_test(
             )
             if (attempt_result.scalar() or 0) > 0:
                 status = "viewed"
+
+        progress = await _calc_student_progress(db, test_id, a.student_id, total_tasks)
+
         assignment_list.append({
+            "assignment_id": str(a.id),
             "student_id": str(a.student_id),
             "student_name": student_name,
             "status": status,
+            **progress,
         })
 
     return {
@@ -299,6 +314,7 @@ async def get_test(
                 "correct_answer_key": t.correct_answer_key,
                 "fipi_criteria": t.fipi_criteria,
                 "theme_id": str(t.theme_id),
+                "fipi_code": theme_map.get(str(t.theme_id)),
             }
             for tt, t in rows
         ],
@@ -345,6 +361,219 @@ async def assign_test(
     return created
 
 
+async def _calc_student_progress(db: AsyncSession, test_id: UUID, student_id: UUID, total_tasks: int) -> dict:
+    """Calculate progress for a single student on a test."""
+    from app.models import Answer, Attempt
+
+    # Get all attempts for this student on this test
+    attempts_result = await db.execute(
+        select(Attempt).where(Attempt.test_id == test_id, Attempt.student_id == student_id)
+    )
+    attempts = attempts_result.scalars().all()
+
+    if not attempts:
+        return {
+            "progress_percent": 0,
+            "answers_done": 0,
+            "answers_total": total_tasks,
+            "auto_score": None,
+            "last_activity": None,
+        }
+
+    # Use the latest attempt for progress
+    latest = max(attempts, key=lambda a: a.started_at or datetime.min)
+
+    # Count answers with non-empty student_input
+    answers_result = await db.execute(
+        select(Answer).where(Answer.attempt_id == latest.id)
+    )
+    answers = answers_result.scalars().all()
+    answers_done = sum(1 for a in answers if a.student_input and a.student_input.strip())
+
+    # Sum auto_score from answers
+    auto_score = sum(a.auto_score or 0 for a in answers)
+
+    # Last activity = latest answer updated_at
+    last_activity = None
+    for a in answers:
+        if a.updated_at:
+            if last_activity is None or a.updated_at > last_activity:
+                last_activity = a.updated_at
+
+    progress_percent = round(answers_done / total_tasks * 100) if total_tasks > 0 else 0
+
+    return {
+        "progress_percent": progress_percent,
+        "answers_done": answers_done,
+        "answers_total": total_tasks,
+        "auto_score": auto_score if auto_score > 0 else None,
+        "last_activity": last_activity.isoformat() if last_activity else None,
+    }
+
+
+@router.get("/{test_id}/assignments")
+async def get_test_assignments(
+    test_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("TUTOR")),
+):
+    """Get assignments with progress for a specific test."""
+    result = await db.execute(
+        select(Test).where(Test.id == test_id, Test.tutor_id == user.id)
+    )
+    test = result.scalar_one_or_none()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    # Get total tasks
+    task_count_result = await db.execute(
+        select(func.count(TestTask.task_id)).where(TestTask.test_id == test_id)
+    )
+    total_tasks = task_count_result.scalar() or 0
+
+    # Get assignments
+    assign_result = await db.execute(
+        select(TestAssignment)
+        .where(TestAssignment.test_id == test_id)
+        .options(
+            selectinload(TestAssignment.student)
+            .selectinload(User.profile)
+        )
+    )
+    assignments = assign_result.scalars().all()
+
+    out = []
+    for a in assignments:
+        student_name = ""
+        if a.student and a.student.profile:
+            student_name = f"{a.student.profile.last_name} {a.student.profile.first_name}"
+
+        status = "new"
+        if a.status == "IN_PROGRESS":
+            status = "in_progress"
+        elif a.status == "COMPLETED":
+            status = "completed"
+        elif a.status == "ASSIGNED":
+            attempt_result = await db.execute(
+                select(func.count(Attempt.id)).where(
+                    Attempt.test_id == test_id,
+                    Attempt.student_id == a.student_id,
+                )
+            )
+            if (attempt_result.scalar() or 0) > 0:
+                status = "viewed"
+
+        progress = await _calc_student_progress(db, test_id, a.student_id, total_tasks)
+
+        out.append({
+            "assignment_id": str(a.id),
+            "student_id": str(a.student_id),
+            "student_name": student_name,
+            "status": status,
+            "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+            **progress,
+        })
+
+    return out
+
+
+@router.delete("/{test_id}/assignments/{student_id}")
+async def unassign_student(
+    test_id: UUID,
+    student_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("TUTOR")),
+):
+    """Remove a student from a test."""
+    result = await db.execute(
+        select(Test).where(Test.id == test_id, Test.tutor_id == user.id)
+    )
+    test = result.scalar_one_or_none()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    assign_result = await db.execute(
+        select(TestAssignment).where(
+            TestAssignment.test_id == test_id,
+            TestAssignment.student_id == student_id,
+        )
+    )
+    assignment = assign_result.scalar_one_or_none()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    await db.delete(assignment)
+    await db.commit()
+    return {"status": "removed"}
+
+
+@router.get("/{test_id}/assignments/{student_id}/answers")
+async def get_student_answers(
+    test_id: UUID,
+    student_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_role("TUTOR")),
+):
+    """Get student's answers for a specific test."""
+    result = await db.execute(
+        select(Test).where(Test.id == test_id, Test.tutor_id == user.id)
+    )
+    test = result.scalar_one_or_none()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    # Get the latest attempt
+    attempt_result = await db.execute(
+        select(Attempt).where(
+            Attempt.test_id == test_id,
+            Attempt.student_id == student_id,
+        ).order_by(Attempt.started_at.desc())
+    )
+    attempt = attempt_result.scalars().first()
+    if not attempt:
+        raise HTTPException(status_code=404, detail="No attempts found")
+
+    # Get tasks in order
+    task_rows_result = await db.execute(
+        select(TestTask, Task)
+        .join(Task, Task.id == TestTask.task_id)
+        .where(TestTask.test_id == test_id)
+        .order_by(TestTask.order_number)
+    )
+    task_rows = task_rows_result.all()
+
+    # Get answers
+    answers_result = await db.execute(
+        select(Answer).where(Answer.attempt_id == attempt.id)
+    )
+    answers_map = {str(a.task_id): a for a in answers_result.scalars().all()}
+
+    out = []
+    for tt, task in task_rows:
+        answer = answers_map.get(str(task.id))
+        out.append({
+            "task_id": str(task.id),
+            "order_number": tt.order_number,
+            "type": task.type,
+            "text_content": task.text_content,
+            "fipi_criteria": task.fipi_criteria,
+            "theme_id": str(task.theme_id),
+            "student_input": answer.student_input if answer else None,
+            "auto_score": answer.auto_score if answer else None,
+            "manual_score": answer.manual_score if answer else None,
+            "ai_feedback": answer.ai_feedback if answer else None,
+        })
+
+    return {
+        "attempt_id": str(attempt.id),
+        "status": attempt.status,
+        "auto_score": attempt.auto_score,
+        "started_at": attempt.started_at.isoformat() if attempt.started_at else None,
+        "finished_at": attempt.finished_at.isoformat() if attempt.finished_at else None,
+        "answers": out,
+    }
+
+
 @router.delete("/{test_id}")
 async def delete_test(
     test_id: UUID,
@@ -358,9 +587,22 @@ async def delete_test(
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
 
-    from sqlalchemy import delete
+    from app.models import Answer, Attempt
+
+    # Delete answers linked to attempts of this test
+    await db.execute(
+        delete(Answer).where(
+            Answer.attempt_id.in_(
+                select(Attempt.id).where(Attempt.test_id == test_id)
+            )
+        )
+    )
+    # Delete attempts for this test
+    await db.execute(delete(Attempt).where(Attempt.test_id == test_id))
+    # Delete test_task and test_assignment links
     await db.execute(delete(TestTask).where(TestTask.test_id == test_id))
     await db.execute(delete(TestAssignment).where(TestAssignment.test_id == test_id))
+    # Delete the test itself
     await db.delete(test)
     await db.commit()
     return {"status": "deleted"}
@@ -380,7 +622,6 @@ async def remove_task_from_test(
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
 
-    from sqlalchemy import delete
     await db.execute(
         delete(TestTask).where(TestTask.test_id == test_id, TestTask.task_id == task_id)
     )
