@@ -40,6 +40,8 @@ def download_image(url: str, timeout: int = 15) -> str | None:
     # Resolve relative URLs
     if url.startswith("/"):
         url = f"https://ege.fipi.ru{url}"
+    elif url.startswith("../../"):
+        url = f"https://ege.fipi.ru/{url[6:]}"  # Remove ../../ and prepend base
     elif url.startswith("docs/"):
         url = f"https://ege.fipi.ru/{url}"
     elif not url.startswith("http"):

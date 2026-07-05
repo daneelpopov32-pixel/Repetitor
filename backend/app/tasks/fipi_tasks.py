@@ -398,12 +398,20 @@ def _extract_tasks_from_html(html):
         if not cell:
             continue
 
-        # Extract images from <img> tags AND ShowPictureQ() JavaScript calls
+        # Extract images from <img> tags AND ShowPicture/ShowPictureQ() JavaScript calls
         images = [img.get("src", "") for img in cell.find_all("img") if img.get("src")]
-        # Also extract from ShowPictureQ() calls in the full qblock HTML
-        js_images = re.findall(r"ShowPictureQ\('([^']+)'\)", str(qb))
+        # Also extract from ShowPicture/ShowPictureQ() calls in the full qblock HTML
+        js_images = re.findall(r"ShowPicture\w*\('([^']+)'\)", str(qb))
         images.extend(js_images)
-        task["images"] = images
+        # Convert relative paths to absolute URLs
+        resolved_images = []
+        for img in images:
+            if img.startswith("../../"):
+                img = f"https://ege.fipi.ru/{img[6:]}"  # Remove ../../ and prepend base
+            elif img.startswith("docs/"):
+                img = f"https://ege.fipi.ru/{img}"
+            resolved_images.append(img)
+        task["images"] = resolved_images
 
         # Clean text FIRST — remove UI elements before type detection
         task["text"] = _clean_cell_text(cell)

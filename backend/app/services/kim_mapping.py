@@ -389,7 +389,7 @@ def classify_task(subtype: str, text: str = "", text_content: dict = None) -> tu
                 return 16, "П"
             return 15, "П"
 
-        # Type 14: source content (default for essays with sources)
+        # Type 14: source content extraction
         if _TYPE14_CONTENT.search(text):
             return 14, "Б"
 
@@ -397,8 +397,8 @@ def classify_task(subtype: str, text: str = "", text_content: dict = None) -> tu
         if re.search(r'прочтите\s+отрывок', text, re.IGNORECASE):
             return 14, "Б"
 
-        # Default essay → Type 14 (source content extraction)
-        return 14, "Б"
+        # No structural marker → honest None
+        return None, None
 
     # ══════════════════════════════════════════════════════════════════
     # EMPTY SUBTYPE → None
