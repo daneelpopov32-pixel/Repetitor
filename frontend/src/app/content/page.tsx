@@ -207,7 +207,22 @@ export default function ContentPage() {
               }
             }}
           >
-            Синхронизировать тему (с изображениями)
+            Синхронизировать тему
+          </button>
+          <button
+            className="btn btn-primary"
+            style={{ background: "#8b5cf6" }}
+            onClick={async () => {
+              if (!confirm("Синхронизировать ВЕСЬ предмет История? Это займёт время.")) return;
+              try {
+                const res = await api.syncSubject("История", auth.token!);
+                setSuccess(`Синхронизация предмета запущена (задача: ${res.task_id.slice(0, 8)}...)`);
+              } catch (e: any) {
+                setError(e.message);
+              }
+            }}
+          >
+            Синхронизировать весь предмет
           </button>
           <Link href="/dashboard" className="btn btn-primary">Дашборд</Link>
           <button className="btn btn-danger" onClick={logout}>Выйти</button>
