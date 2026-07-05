@@ -1,329 +1,406 @@
 """
-KIM classifier for EGE History tasks.
+KIM classifier for EGE History tasks — STRICT STRUCTURAL RULES.
 
-Classifies tasks into exam positions (1-21) and difficulty levels (Б/П/В)
-based on content analysis, NOT just format.
+Classification priority:
+  1. Structural markers (headers, image presence, answer format)
+  2. Content patterns as fallback
+  3. Honest None when uncertain — NO default to any position
 
-Source: ИС-11 ЕГЭ 2025 СПЕЦ.pdf, "Обобщённый план варианта" (pages 11-14).
-Official level distribution: 10 Б / 8 П / 3 В = 42 points.
-
-Classification rules per position (content-based, not format-based):
-  №1: matching + dates/years → Б
-  №2: sequence/chronology → Б
-  №3: matching + facts/processes (NOT dates, NOT figures, NOT culture) → Б
-  №4: table-based data in task → П
-  №5: matching + historical figures (names with initials/titles) → Б
-  №6: short_answer + written source analysis → П
-  №7: matching + culture (art, monuments, architecture) → Б
-  №8: image + WWII markers (1941-1945) → Б (STRICT: must have image AND WWII)
-  №9: map/image → Б
-  №10: map/image → Б
-  №11: map + text correlation → П
-  №12: map, multiple choice → Б
-  №13: essay + source attribution → П
-  №14: essay + source info extraction → Б
-  №15: essay + image (not map, not WWII necessarily) → П
-  №16: essay + image → П
-  №17: essay + sources + WWII markers (STRICT) → П
-  №18: essay + cause-effect → В
-  №19: essay + historical terms/concepts → П
-  №20: essay + comparison → В
-  №21: essay + argumentation → В
+Source: Task 23 specifications based on real FIPI task analysis.
 """
 
 import re
 
-# ─── Official levels from PDF (verified) ─────────────────────────────
+# ─── Official levels and points ──────────────────────────────────────
 POSITION_LEVELS = {
     1: "Б", 2: "Б", 3: "Б", 4: "П", 5: "Б", 6: "П", 7: "Б",
     8: "Б", 9: "Б", 10: "Б", 11: "П", 12: "Б",
     13: "П", 14: "Б", 15: "П", 16: "П", 17: "П", 18: "В",
     19: "П", 20: "В", 21: "В",
 }
-# Verify: Б=10 (1,2,3,5,7,8,9,10,12,14), П=8 (4,6,11,13,15,16,17,19), В=3 (18,20,21)
 
 POSITION_POINTS = {
     1: 2, 2: 1, 3: 2, 4: 3, 5: 2, 6: 2, 7: 2, 8: 1, 9: 1, 10: 1, 11: 1, 12: 2,
     13: 2, 14: 2, 15: 2, 16: 2, 17: 3, 18: 3, 19: 2, 20: 3, 21: 3,
 }
 
-# ─── Keyword patterns for content-based classification ────────────────
-
-# №5: Historical figures — names, titles, roles (strict patterns)
-_FIGURE_PATTERNS = re.compile(
-    r'(?:\bимператор\b|\bцарь\b|\bцарица\b|\bкнязь\b|\bхан\b|\bпрезидент\b'
-    r'|\bпредседатель\b|\bгенерал\b|\bмаршал\b|\bдиктатор\b|\bполководец\b'
-    r'|\bреформатор\b'  # Specific roles
-    r'|[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.\s*[А-ЯЁ]\.)',  # Фамилия И.О.
-    re.IGNORECASE
-)
-
-# №7: Culture — monuments, art, architecture
-_CULTURE_PATTERNS = re.compile(
-    r'(?:памятник|картина|собор|храм|музей|галерея|литературн|'
-    r'произведени|архитектур|живопис|скульптур|иконопис|'
-    r'фреск|мозаик|ансамбл| дворц| kreml|Третьяковк|'
-    r'Эрмитаж|Большой театр|Мариинск)',
-    re.IGNORECASE
-)
-
-# №8, №17: WWII markers (STRICT)
-_WWII_PATTERNS = re.compile(
-    r'(?:194[1-5]|великая отечественная|блокада ленинграда|'
-    r'сталинград|Курская битва|Курск|Сталинград|'
-    r'Берлин|Победа|День Победы|9 мая|'
-    r'ВОВ|Великая война|вторая мировая война|'
-    r'Воронеж|Курск|Орёл|Смоленск|Севастополь|'
-    r'СССР.*Герман|Герман.*СССР|'
-    r'Т-34|Катюша|Ил-2|ППШ|Т-34)',
-    re.IGNORECASE
-)
-
-# №4: Table-based data
-_TABLE_PATTERNS = re.compile(
-    r'(?:таблиц|столбец|строка|графа|ячейка|'
-    r'заполните таблиц|систематиз|расположите.*столб|'
-    r'подберите.*столб|впишите.*таблиц|'
-    r'заполните пропуск|впишите пропуск|'
-    r'заполните пустые ячейки)',
-    re.IGNORECASE
-)
-
-# №8-12: Map/image work (expanded)
-_MAP_PATTERNS = re.compile(
-    r'(?:карта|схем|территор|область|государств|'
-    r'границ|район|область|округ|город|место|'
-    r'расположен|находился|находится|отметьте.*на карт|'
-    r'укажите.*название.*города|укажите.*название.*реки|'
-    r'назовите.*город|назовите.*реку|'
-    r'обозначен.*на.*карт|обозначен.*на.*схем)',
-    re.IGNORECASE
-)
-
-# №14: Source info extraction (expanded)
-_INFO_EXTRACT_PATTERNS = re.compile(
-    r'(?:источник|документ|послание|памятник|закон|'
-    r'указ|манифест|конституция|декрет|приказ|'
-    r'отрывок|фрагмент|цитат|'
-    r'прочтите.*текст|прочтите.*отрывок|'
-    r'ниже приведён.*текст|ниже приведён.*отрывок)',
-    re.IGNORECASE
-)
-
-# №15-16: Image analysis (expanded)
-_IMAGE_PATTERNS = re.compile(
-    r'(?:изображен|иллюстрац|фотограф|рисунк|гравюр|'
-    r'портрет|памятник|предмет|вещь|оружие|монета|'
-    r'обратите внимание.*изображен|на рисунке|на фото|'
-    r'рассмотрите изображение|рассмотрите.*рисунок|'
-    r'на данн.*марке|на данн.*монете|на данн.*медали)',
-    re.IGNORECASE
-)
-
-# №13: Source attribution
-_ATTRIBUTION_PATTERNS = re.compile(
-    r'(?:автор|когда был|кем был написан|дата создания|'
-    r'обстоятельства создания|источник был создан|'
-    r'определите автор|установите дату|к какому периоду)',
-    re.IGNORECASE
-)
-
-# №6: Source analysis (short answer) — expanded
-_SOURCE_PATTERNS = re.compile(
-    r'(?:источник|документ|послание|памятник|закон|'
-    r'указ|манифест|конституция|декрет|приказ|'
-    r'отрывок|фрагмент|цитат)',
-    re.IGNORECASE
-)
-
-# №15-16: Image analysis (not map, not necessarily WWII)
-_IMAGE_PATTERNS = re.compile(
-    r'(?:изображен|иллюстрац|фотограф|рисунк|гравюр|'
-    r'портрет|памятник|предмет|вещь|оружие|монета|'
-    r'обратите внимание.*изображен|на рисунке|на фото)',
-    re.IGNORECASE
-)
-
-# №9-12: Map work
-_MAP_PATTERNS = re.compile(
-    r'(?:карта|схем|территор|область|государств|'
-    r'границ|район|область|округ|город|место|'
-    r'расположен|находился|находится|отметьте.*на карт)',
-    re.IGNORECASE
-)
-
-# №18: Cause-effect
-_CAUSE_EFFECT_PATTERNS = re.compile(
-    r'(?:причин|следстви|результат|влияние|привело к|'
-    r'являлось следствием|обусловлен|обусловило|'
-    r'привело к|способствовал|вызвало|породило)',
-    re.IGNORECASE
-)
-
-# №19: Historical terms
-_TERMS_PATTERNS = re.compile(
-    r'(?:понятие|термин|определени|означает|обознача|'
-    r'означение|смысл|содержание понятия|раскройте понятие|'
-    r'историческ.*понятие|историческ.*термин)',
-    re.IGNORECASE
-)
-
-# №20: Comparison
-_COMPARISON_PATTERNS = re.compile(
-    r'(?:сравни|сопостав|общее.*различн|сходств|отличи|'
-    r'сравнительн|аналогичн|в отличие|по аналогии)',
-    re.IGNORECASE
-)
-
-# №21: Argumentation
-_ARGUMENT_PATTERNS = re.compile(
-    r'(?:аргумент|докаж|обоснуй|аргументируй|'
-    r'согласны ли вы|оцените|свой взгляд|своя позиция|'
-    r'подтвердите|опровергните|как вы считаете)',
-    re.IGNORECASE
-)
-
 
 def _has_image(text_content: dict) -> bool:
-    """Check if the task has an image in text_content."""
     if not isinstance(text_content, dict):
         return False
-    images = text_content.get("images", [])
-    return bool(images)
+    return bool(text_content.get("images", []))
+
+
+def _get_task_description(text: str) -> str:
+    """Extract task description only (before answer options)."""
+    for marker in [
+        "\nА)", "\nа)", "\n1)", "\nСОБЫТИЯ", "\nПРОЦЕССЫ", "\nГОДЫ",
+        "\nУЧАСТНИКИ", "\nФАКТЫ", "\nПАМЯТНИКИ", "\nДЕЯТЕЛИ",
+        "\nГОСУДАРСТВЕННЫЕ ДЕЯТЕЛИ", "\nПропущенные элементы",
+    ]:
+        idx = text.find(marker)
+        if idx > 0:
+            return text[:idx]
+    return text
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TYPE-SPECIFIC STRUCTURAL PATTERNS
+# ═══════════════════════════════════════════════════════════════════════
+
+# Type 1: matching, right column = years (4-digit numbers)
+# No explicit header, detected by content pattern
+_TYPE1_YEARS = re.compile(
+    r'(?:событиями\s+и\s+годами|годам\w*\s+и\s+событ|'
+    r'ГОДЫ\s*$|хронологическ)',
+    re.MULTILINE | re.IGNORECASE
+)
+
+# Type 3: matching, headers "ПРОЦЕСС(Ы) (ЯВЛЕНИЕ, СОБЫТИЕ)" and "ФАКТЫ"
+_TYPE3_HEADERS = re.compile(
+    r'(?:ПРОЦЕСС\w*\s*\([\w,\s]+\)|ФАКТЫ|'
+    r'событиями\s+и\s+участник\w*|'
+    r'участниками\s+этих\s+событий|'
+    r'процессами\s+и\s+фактами|'
+    r'явлениями.*событиями.*и\s+фактами)',
+    re.IGNORECASE
+)
+
+# Type 4: HTML table with blanks + "Пропущенные элементы"
+_TYPE4_TABLE = re.compile(
+    r'(?:заполните\s+пустые\s+ячейки\s+таблиц|'
+    r'пустые\s+ячейки\s+таблиц|'
+    r'заполните\s+таблиц)',
+    re.IGNORECASE
+)
+
+# Type 5: matching, header "ГОСУДАРСТВЕННЫЕ ДЕЯТЕЛИ" or "ДЕЯТЕЛИ"
+_TYPE5_FIGURES = re.compile(
+    r'(?:ГОСУДАРСТВЕННЫЕ\s+ДЕЯТЕЛИ|ДЕЯТЕЛИ\s*$|'
+    r'ДЕЯТЕЛИ\s*\([\w,\s]+\))',
+    re.MULTILINE | re.IGNORECASE
+)
+
+# Type 6: long quote + "выберите верные суждения" / "запишите цифры"
+# NOT short_answer — separate format "множественный выбор по цитате"
+_TYPE6_SOURCE = re.compile(
+    r'(?:выберите\s+\w+\s+верн\w*\s+суждени|'
+    r'запишите\s+цифры\s*,?\s*под\s+которыми|'
+    r'прочтите\s+отрывок\s+и\s+(?:выберите|запишите)|'
+    r'какие\s+из\s+перечисленн\w+\s+суждени)',
+    re.IGNORECASE
+)
+
+# Type 7: matching, header "ПАМЯТНИК(И) КУЛЬТУРЫ"
+_TYPE7_CULTURE = re.compile(
+    r'(?:ПАМЯТНИК\w*\s+КУЛЬТУРЫ|'
+    r'памятник\w*\s+культур\w*|'
+    r'произведен\w*\s+культур\w*)',
+    re.IGNORECASE
+)
+
+# Type 8: "Рассмотрите изображение" + image + WWII markers
+_TYPE8_INTRO = re.compile(
+    r'рассмотрите\s+изображени\w*\s+и\s+выполните',
+    re.IGNORECASE
+)
+
+_WWII_MARKERS = re.compile(
+    r'(?:194[1-5]|великая\s+отечественная|'
+    r'блокада\s+ленинграда|сталинград|Курская\s+битва|'
+    r'Берлин|Победа|День\s+Победы|9\s+мая|'
+    r'ВОВ|вторая\s+мировая\s+война)',
+    re.IGNORECASE
+)
+
+# Types 9-12: ALL require image + map intro
+_TYPE9_12_MAP_INTRO = re.compile(
+    r'(?:рассмотрите\s+(?:схему|карту)\s+и\s+выполните|'
+    r'обозначен\w*\s+на\s+(?:схеме|карте)|'
+    r'в\s+легенде\s+схемы|'
+    r'на\s+схеме\s+цифр)',
+    re.IGNORECASE
+)
+
+# Type 9: question about entire event/war
+_TYPE9_WHOLE_EVENT = re.compile(
+    r'(?:напишите\s+название\s+(?:войны|события)|'
+    r'назовите\s+название\s+(?:войны|события)|'
+    r'какому\s+событию\s+посвящена\s+схема)',
+    re.IGNORECASE
+)
+
+# Type 10: question about numbered object on map
+_TYPE10_NUMBERED = re.compile(
+    r'(?:обозначен\w*\s+цифр\w*\s*[«"\d]|'
+    r'город\s*,?\s*обозначен|'
+    r'рек\w*\s*,?\s*обозначен|'
+    r'укажите\s+название\s+(?:города|реки)|'
+    r'назовите\s+город)',
+    re.IGNORECASE
+)
+
+# Type 11: map + text with blank (комбинация карта+текст)
+_TYPE11_MAP_TEXT = re.compile(
+    r'(?:используя\s+(?:схему|карту)\s*,?\s*укажите\s+пропущенное|'
+    r'заполните\s+пропуск\s+в\s+предложении.*(?:на\s+схеме|на\s+карте)|'
+    r'напишите\s+название\s+города.*пропущено\s+в\s+тексте|'
+    r'прочтите\s+текст\s+о\s+событиях.*на\s+схеме)',
+    re.IGNORECASE
+)
+
+# Type 12: map + list of judgments (like Type 6 but about map)
+# ONLY "суждений" — not buildings/posters (those are Type 16)
+_TYPE12_MAP_JUDGMENTS = re.compile(
+    r'(?:какие\s+из\s+представленн\w+\s+суждени|'
+    r'какие\s+суждени|'
+    r'какие\s+из\s+перечисленн\w+\s+суждени)',
+    re.IGNORECASE
+)
+
+# Type 16: multiple images to choose from (buildings, posters, etc.)
+_TYPE16_MULTI_IMAGE = re.compile(
+    r'(?:какие\s+из\s+представленн\w+\s+(?:зданий|сооружений|плакатов|афиш|памятников)|'
+    r'укажите\s+афиши|'
+    r'какие\s+здания|'
+    r'какие\s+из\s+нижеперечисленн\w+)',
+    re.IGNORECASE
+)
+
+# Type 13: source quote + question about source itself (attribution)
+_TYPE13_ATTRIBUTION = re.compile(
+    r'(?:автор\w*\s+этого|'
+    r'кем\s+был\s+написан|'
+    r'обстоятельства\s+создания|'
+    r'к\s+какому\s+периоду\s+относится|'
+    r'назовите\s+название\s+(?:сочинения|произведения|документа)|'
+    r'определите\s+автор|'
+    r'установите\s+дату\s+создания)',
+    re.IGNORECASE
+)
+
+# Type 14: source quote + question about content inside source
+_TYPE14_CONTENT = re.compile(
+    r'(?:прочтите\s+отрывок\s+из\s+(?:воспоминаний|документа|письма|статьи)|'
+    r'с\s+чем\s+согласен|'
+    r'что\s+имел\s+в\s+виду\s+автор|'
+    r'какие\s+из\s+перечисленн\w+\s+событ\w*\s+относятся)',
+    re.IGNORECASE
+)
+
+# Type 15: single image + "назовите местность/событие"
+_TYPE15_SINGLE_IMAGE = re.compile(
+    r'(?:назовите\s+(?:местность|событие|город|год|месяц)|'
+    r'укажите\s+(?:месяц|год|название)|'
+    r'заполните\s+пропуск\s+в\s+предложении)',
+    re.IGNORECASE
+)
+
+# Type 17: WWII sources (two fragments A/B)
+_TYPE17_WWII_SOURCES = re.compile(
+    r'(?:фрагмент\w*\s+источник|'
+    r'прочтите\s+отрывки?\s+из\s+воспоминаний|'
+    r'источник\w*\s+[АБ]\))',
+    re.IGNORECASE
+)
+
+# Type 18: three-part answer structure (а/б/в)
+_TYPE18_CAUSE_EFFECT = re.compile(
+    r'(?:а\)\s*причин|б\)\s*последстви|в\)\s*последстви|'
+    r'причин\w*\s+и\s+следстви|'
+    r'установите\s+соответствие\s+между\s+причинами)',
+    re.IGNORECASE
+)
+
+# Type 19: "раскройте смысл понятия"
+_TYPE19_CONCEPTS = re.compile(
+    r'(?:раскройте\s+смысл\s+понятия|'
+    r'определени\w*\s+термина|'
+    r'что\s+означает\s+термин)',
+    re.IGNORECASE
+)
+
+# Type 20: comparison with 2+2 structure
+_TYPE20_COMPARISON = re.compile(
+    r'(?:тезис\s*\(обобщённое|'
+    r'два\s+обоснования|'
+    r'сравните\s+два\s+события|'
+    r'сопоставьте\s+два)',
+    re.IGNORECASE
+)
+
+# Type 21: argumentation with named categories for two objects
+_TYPE21_ARGUMENT = re.compile(
+    r'(?:аргумент\s+для\s+\w+|'
+    r'приведите\s+аргумент\w*\s+для\s+каждого|'
+    r'напишите\s+последовательный\s+связный\s+текст|'
+    r'историческое\s+сочинение\s+об\s+одном|'
+    r'вам\s+необходимо\s+написать)',
+    re.IGNORECASE
+)
+
+# Content patterns for fallback
+_DATE_PATTERN = re.compile(r'\b(?:1[0-9]{3}|20[0-2][0-9])\b')
+_FIGURE_NAMES = re.compile(
+    r'(?:[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.\s*[А-ЯЁ]\.)|'
+    r'(?:\bимператор\b|\bцарь\b|\bкнязь\b|\bхан\b|\bпрезидент\b|\bгенерал\b)',
+    re.IGNORECASE
+)
 
 
 def classify_task(subtype: str, text: str = "", text_content: dict = None) -> tuple[int | None, str | None]:
     """Classify a task into KIM position and difficulty level.
 
-    Uses content-based rules, not just format.
+    Structural markers first, content patterns as fallback.
     Returns (exam_position, difficulty_level) or (None, None) if uncertain.
-
-    Args:
-        subtype: FIPI parser subtype (matching/sequence/short_answer/essay)
-        text: Cleaned task text
-        text_content: Full text_content dict (for image checks)
     """
     if text_content is None:
         text_content = {}
-    has_image = _has_image(text_content)
+    has_img = _has_image(text_content)
+    desc = _get_task_description(text)
 
-    # ── SEQUENCE → always position 2 ──
+    # ══════════════════════════════════════════════════════════════════
+    # SEQUENCE → Type 2
+    # ══════════════════════════════════════════════════════════════════
     if subtype == "sequence":
         return 2, "Б"
 
-    # ── MATCHING → positions 1, 3, 5, 7 (distinguished by content) ──
+    # ══════════════════════════════════════════════════════════════════
+    # MATCHING → Types 1, 3, 4, 5, 7
+    # ══════════════════════════════════════════════════════════════════
     if subtype == "matching":
-        # EXCLUSION: "фрагменты/отрывки исторических источников" = position 3, NOT 5
-        if re.search(r'(?:фрагмент\w*\s+(?:историческ\w*\s+)?источник\w*|отрывк\w*\s+(?:историческ\w*\s+)?источник\w*)', text, re.IGNORECASE):
-            return 3, "Б"
-        if _FIGURE_PATTERNS.search(text):
-            return 5, "Б"
-        if _CULTURE_PATTERNS.search(text):
-            return 7, "Б"
-        # Date-heavy content = position 1
-        date_count = len(re.findall(r'\b(?:1[0-9]{3}|20[0-2][0-9])\b', text))
-        if date_count >= 3:
-            return 1, "Б"
-        # Default matching = facts/processes (pos 3)
-        return 3, "Б"
-
-    # ── SHORT ANSWER → positions 4, 6, 8-12 (content-based) ──
-    if subtype == "short_answer":
-        # №8: STRICT — must have image AND WWII markers
-        if has_image and _WWII_PATTERNS.search(text):
-            return 8, "Б"
-
-        # №9, 10, 12: map work — allow if text clearly indicates map, even without stored image
-        if _MAP_PATTERNS.search(text):
-            # №11: map + text correlation
-            if re.search(r'(?:соотнес|сопостав|установите|определите.*по.*карт)', text, re.IGNORECASE):
-                return 11, "П"
-            return 9, "Б"
-
-        # №10: image work (without map markers) — "рассмотрите изображение"
-        if _IMAGE_PATTERNS.search(text):
-            return 10, "Б"
-
-        # №4: table-based data
-        if _TABLE_PATTERNS.search(text):
+        # Type 4: table with blanks
+        if _TYPE4_TABLE.search(text):
             return 4, "П"
 
-        # №6: written source analysis
-        if _INFO_EXTRACT_PATTERNS.search(text):
-            return 6, "П"
-
-        # №12: multiple choice map
-        if re.search(r'(?:назовите.*правител|укажите.*фамили|напишите.*название)', text, re.IGNORECASE):
-            return 12, "Б"
-
-        # №5: figure matching (short_answer with figure keywords)
-        if _FIGURE_PATTERNS.search(text):
+        # Type 5: header "ДЕЯТЕЛИ"
+        if _TYPE5_FIGURES.search(desc):
             return 5, "Б"
 
-        # №3: term/list matching (default for short_answer)
-        if re.search(r'(?:ниже приведён.*список|ниже приведён.*перечень|запишите термин|напишите термин|напишите пропущенное|историческ.*термин|пропущенное слово)', text, re.IGNORECASE):
-            return 3, "Б"
-
-        # №7: culture (short_answer with culture keywords)
-        if _CULTURE_PATTERNS.search(text):
+        # Type 7: header "ПАМЯТНИКИ КУЛЬТУРЫ"
+        if _TYPE7_CULTURE.search(desc):
             return 7, "Б"
 
-        # №5: figure matching (short_answer with figure keywords)
-        if re.search(r'(?:какие.*здания|какие.*сооружени|какие.*плакат|укажите.*афиш)', text, re.IGNORECASE):
+        # Type 3: headers "ПРОЦЕССЫ/ФАКТЫ" or "событиями и участниками"
+        if _TYPE3_HEADERS.search(desc):
+            return 3, "Б"
+
+        # Type 1: right column = years
+        if _TYPE1_YEARS.search(desc):
+            return 1, "Б"
+
+        # Fallback: count years in description
+        year_count = len(_DATE_PATTERN.findall(desc))
+        if year_count >= 3:
+            return 1, "Б"
+
+        # Fallback: figure names → Type 5
+        if _FIGURE_NAMES.search(desc):
             return 5, "Б"
 
-        # Default: position 3 (facts/processes) for any remaining short_answer
+        # Default matching → Type 3 (facts/participants)
         return 3, "Б"
 
-    # ── ESSAY → positions 13-21 (content-based) ──
-    if subtype == "essay":
-        # №17: STRICT — WWII sources
-        if has_image and _WWII_PATTERNS.search(text):
-            return 17, "П"
-        if _WWII_PATTERNS.search(text) and _INFO_EXTRACT_PATTERNS.search(text):
-            return 17, "П"
+    # ══════════════════════════════════════════════════════════════════
+    # SHORT ANSWER → Types 4, 8, 9, 10, 11, 12
+    # Type 6 is NOT short_answer — it's separate format
+    # ══════════════════════════════════════════════════════════════════
+    if subtype == "short_answer":
+        # Type 8: image + WWII (STRICT: must have both)
+        if has_img and _WWII_MARKERS.search(text):
+            return 8, "Б"
 
-        # №15, 16: image analysis
-        if has_image and _IMAGE_PATTERNS.search(text):
-            return 15, "П"
+        # Types 9-12: require image + map intro, OR strong text marker
+        has_map_text = _TYPE9_12_MAP_INTRO.search(text)
 
-        # №13: source attribution
-        if _ATTRIBUTION_PATTERNS.search(text):
-            return 13, "П"
+        if has_img and has_map_text:
+            # Type 11: map + text with blank
+            if _TYPE11_MAP_TEXT.search(text):
+                return 11, "П"
+            # Type 12: map + judgments to choose
+            if _TYPE12_MAP_JUDGMENTS.search(text):
+                return 12, "Б"
+            # Type 10: numbered object on map
+            if _TYPE10_NUMBERED.search(text):
+                return 10, "Б"
+            # Type 9: whole event/war question
+            return 9, "Б"
 
-        # №18: cause-effect
-        if _CAUSE_EFFECT_PATTERNS.search(text):
-            return 18, "В"
+        # Fallback: strong text marker without image (FIPI blocks downloads)
+        if has_map_text:
+            if _TYPE11_MAP_TEXT.search(text):
+                return 11, "П"
+            if _TYPE12_MAP_JUDGMENTS.search(text):
+                return 12, "Б"
+            if _TYPE10_NUMBERED.search(text):
+                return 10, "Б"
+            return 9, "Б"
 
-        # №19: terms/concepts
-        if _TERMS_PATTERNS.search(text):
-            return 19, "П"
+        # Type 4: table (without image)
+        if _TYPE4_TABLE.search(text):
+            return 4, "П"
 
-        # №20: comparison
-        if _COMPARISON_PATTERNS.search(text):
-            return 20, "В"
-
-        # №21: argumentation
-        if _ARGUMENT_PATTERNS.search(text):
-            return 21, "В"
-
-        # №14: default essay = source info extraction
-        if _INFO_EXTRACT_PATTERNS.search(text):
-            return 14, "Б"
-
-        # №16: image essay without map markers
-        if _IMAGE_PATTERNS.search(text):
+        # Type 16: multiple images to choose (without stored image)
+        if _TYPE16_MULTI_IMAGE.search(text):
             return 16, "П"
 
-        # №13: date-specific essay ("укажите с точностью до десятилетия")
-        if re.search(r'(?:укажите.*десятилети|укажите.*год.*когда|назовите.*год)', text, re.IGNORECASE):
+        # No structural marker → honest None
+        return None, None
+
+    # ══════════════════════════════════════════════════════════════════
+    # ESSAY → Types 13-21
+    # ══════════════════════════════════════════════════════════════════
+    if subtype == "essay":
+        # Type 21: "написать историческое сочинение"
+        if _TYPE21_ARGUMENT.search(text):
+            return 21, "В"
+
+        # Type 17: WWII sources (STRICT: two fragments + WWII)
+        if _WWII_MARKERS.search(text) and _TYPE17_WWII_SOURCES.search(text):
+            return 17, "П"
+
+        # Type 18: three-part answer structure (а/б/в)
+        if _TYPE18_CAUSE_EFFECT.search(text):
+            return 18, "В"
+
+        # Type 19: "раскройте смысл понятия"
+        if _TYPE19_CONCEPTS.search(text):
+            return 19, "П"
+
+        # Type 20: comparison with 2+2
+        if _TYPE20_COMPARISON.search(text):
+            return 20, "В"
+
+        # Type 13: source attribution
+        if _TYPE13_ATTRIBUTION.search(text):
             return 13, "П"
 
-        # Default essay = source info extraction (position 14)
+        # Type 12: judgments about a map (essay subtype)
+        if _TYPE12_MAP_JUDGMENTS.search(text):
+            return 12, "Б"
+
+        # Type 6: multiple choice based on source (essay subtype)
+        if _TYPE6_SOURCE.search(text):
+            return 6, "П"
+
+        # Type 15/16: image analysis (require image)
+        if has_img:
+            if _TYPE16_MULTI_IMAGE.search(text):
+                return 16, "П"
+            return 15, "П"
+
+        # Type 14: source content (default for essays with sources)
+        if _TYPE14_CONTENT.search(text):
+            return 14, "Б"
+
+        # Type 14 fallback: essays with "прочтите отрывок"
+        if re.search(r'прочтите\s+отрывок', text, re.IGNORECASE):
+            return 14, "Б"
+
+        # Default essay → Type 14 (source content extraction)
         return 14, "Б"
 
-    # ── EMPTY SUBTYPE (seed data) → default to position 3 ──
-    if not subtype:
-        return 3, "Б"
-
+    # ══════════════════════════════════════════════════════════════════
+    # EMPTY SUBTYPE → None
+    # ══════════════════════════════════════════════════════════════════
     return None, None

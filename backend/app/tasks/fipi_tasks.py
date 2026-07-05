@@ -679,60 +679,6 @@ def sync_subject_full(self, subject_name="История"):
     }
 
 
-@celery_app.task(bind=True, name="fetch_fipi_tasks")
-def fetch_fipi_tasks(self, theme_codes, count_per_theme=5, task_type="TEST"):
-    from app.models import Theme, Task
-    from app.services.content_parser import compute_text_hash
-    import time
-
-    results = {}
-    for i, theme_code in enumerate(theme_codes):
-        self.update_state(state="PROGRESS", meta={"current": i + 1, "total": len(theme_codes), "theme": theme_code})
-        db = _get_sync_session()
-        try:
-            theme = db.query(Theme).filter(Theme.fipi_code == theme_code).first()
-            if not theme:
-                results[theme_code] = []
-                continue
-
-            existing = db.query(Task).filter(Task.theme_id == theme.id).count()
-            needed = max(0, count_per_theme - existing)
-
-            if needed == 0:
-                tasks = db.query(Task).filter(Task.theme_id == theme.id).limit(count_per_theme).all()
-                results[theme_code] = [{"id": str(t.id), "type": t.type} for t in tasks]
-                continue
-
-            fetched = _fetch_tasks_for_theme(theme_code, needed, task_type)
-            for task_data in fetched:
-                text_content = _build_text_content(task_data)
-
-                text_hash = compute_text_hash(text_content)
-                if db.query(Task).filter(Task.metadata_["text_hash"].as_string() == text_hash).first():
-                    continue
-
-                task = Task(
-                    subject_id=theme.subject_id, theme_id=theme.id, type=task_data["type"],
-                    text_content=text_content, correct_answer_key=None, fipi_criteria=None,
-                    source_url=f"{BASE_URL}/questions.php?proj={FIPI_PROJECT_ID}&theme={theme_code}",
-                    metadata_={"text_hash": text_hash, "fipi_guid": task_data.get("guid"), "subtype": task_data.get("subtype")},
-                )
-                db.add(task)
-
-            db.commit()
-
-            tasks = db.query(Task).filter(Task.theme_id == theme.id).limit(count_per_theme).all()
-            results[theme_code] = [{"id": str(t.id), "type": t.type} for t in tasks]
-            time.sleep(1.5)
-        except Exception as e:
-            logger.error(f"Error fetching theme {theme_code}: {e}")
-            results[theme_code] = []
-        finally:
-            db.close()
-
-    return results
-
-
 @celery_app.task(bind=True, name="create_test_from_fipi")
 def create_test_from_fipi(self, tutor_id, title, theme_codes, count_per_theme, task_type, time_limit_minutes=None):
     """Create a test from LOCAL database only. No live FIPI requests."""
