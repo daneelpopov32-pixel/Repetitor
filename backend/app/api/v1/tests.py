@@ -315,6 +315,8 @@ async def get_test(
                 "fipi_criteria": t.fipi_criteria,
                 "theme_id": str(t.theme_id),
                 "fipi_code": theme_map.get(str(t.theme_id)),
+                "exam_position": t.exam_position,
+                "difficulty_level": t.difficulty_level,
             }
             for tt, t in rows
         ],
@@ -562,6 +564,8 @@ async def get_student_answers(
             "auto_score": answer.auto_score if answer else None,
             "manual_score": answer.manual_score if answer else None,
             "ai_feedback": answer.ai_feedback if answer else None,
+            "exam_position": task.exam_position,
+            "difficulty_level": task.difficulty_level,
         })
 
     return {
