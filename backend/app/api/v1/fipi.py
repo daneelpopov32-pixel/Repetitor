@@ -33,6 +33,7 @@ class CreateTestAsyncRequest(BaseModel):
     count_per_theme: int = 5
     task_type: str = "TEST"  # TEST, ESSAY, MIX
     time_limit_minutes: int | None = None
+    exam_positions: list[int] | None = None  # Filter by KIM types (1-21)
 
 
 @router.post("/sync-codifier")
@@ -82,6 +83,7 @@ async def create_test_async(
         count_per_theme=data.count_per_theme,
         task_type=data.task_type,
         time_limit_minutes=data.time_limit_minutes,
+        exam_positions=data.exam_positions,
     )
     return {"task_id": task.id, "status": "started"}
 

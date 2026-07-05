@@ -19,6 +19,7 @@ export default function NewTestPage() {
   const [timeLimit, setTimeLimit] = useState("");
   const [countPerTheme, setCountPerTheme] = useState("5");
   const [taskType, setTaskType] = useState("TEST");
+  const [selectedPositions, setSelectedPositions] = useState<number[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingCounts, setLoadingCounts] = useState(false);
@@ -241,6 +242,7 @@ export default function NewTestPage() {
           count_per_theme: parseInt(countPerTheme) || 5,
           task_type: taskType,
           time_limit_minutes: timeLimit ? parseInt(timeLimit) : undefined,
+          exam_positions: selectedPositions.length > 0 ? selectedPositions : undefined,
         },
         auth.token!
       );
@@ -397,6 +399,45 @@ export default function NewTestPage() {
             <option value="ESSAY">Только ESSAY</option>
             <option value="MIX">Микс (TEST + ESSAY)</option>
           </select>
+        </div>
+        <div className="form-group">
+          <label>Типы КИМ (позиции 1-21) <span style={{ fontWeight: 400, fontSize: "0.8rem", color: "var(--text-secondary)" }}>— необязательно</span></label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
+            {Array.from({ length: 21 }, (_, i) => i + 1).map((pos) => (
+              <button
+                key={pos}
+                type="button"
+                className={`btn ${selectedPositions.includes(pos) ? "btn-primary" : ""}`}
+                style={{
+                  padding: "0.25rem 0.5rem",
+                  fontSize: "0.8rem",
+                  minWidth: "2rem",
+                  background: selectedPositions.includes(pos) ? "var(--primary)" : "var(--border)",
+                  color: selectedPositions.includes(pos) ? "white" : "var(--text)",
+                }}
+                onClick={() => {
+                  setSelectedPositions((prev) =>
+                    prev.includes(pos) ? prev.filter((p) => p !== pos) : [...prev, pos]
+                  );
+                }}
+                disabled={creating}
+              >
+                {pos}
+              </button>
+            ))}
+          </div>
+          {selectedPositions.length > 0 && (
+            <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
+              Выбрано: {selectedPositions.join(", ")}
+              <button
+                type="button"
+                style={{ marginLeft: "0.5rem", background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: "0.8rem" }}
+                onClick={() => setSelectedPositions([])}
+              >
+                очистить
+              </button>
+            </p>
+          )}
         </div>
       </div>
 

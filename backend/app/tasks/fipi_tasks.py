@@ -680,7 +680,7 @@ def sync_subject_full(self, subject_name="История"):
 
 
 @celery_app.task(bind=True, name="create_test_from_fipi")
-def create_test_from_fipi(self, tutor_id, title, theme_codes, count_per_theme, task_type, time_limit_minutes=None):
+def create_test_from_fipi(self, tutor_id, title, theme_codes, count_per_theme, task_type, time_limit_minutes=None, exam_positions=None):
     """Create a test from LOCAL database only. No live FIPI requests."""
     from app.models import Theme, Task, Test, TestTask
     from uuid import UUID
@@ -702,6 +702,10 @@ def create_test_from_fipi(self, tutor_id, title, theme_codes, count_per_theme, t
             query = db.query(Task).filter(Task.theme_id == theme.id)
             if task_type and task_type != "MIX":
                 query = query.filter(Task.type == task_type)
+
+            # Filter by exam positions (KIM types)
+            if exam_positions:
+                query = query.filter(Task.exam_position.in_(exam_positions))
 
             available = query.all()
             available_count = len(available)

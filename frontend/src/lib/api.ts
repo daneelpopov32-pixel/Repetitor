@@ -149,7 +149,7 @@ export const api = {
     }),
   getSyncStatus: (token: string) =>
     request<any[]>("/fipi/sync-status", { token }),
-  createTestAsync: (data: { title: string; theme_codes: string[]; count_per_theme: number; task_type: string; time_limit_minutes?: number }, token: string) =>
+  createTestAsync: (data: { title: string; theme_codes: string[]; count_per_theme: number; task_type: string; time_limit_minutes?: number; exam_positions?: number[] }, token: string) =>
     request<any>("/fipi/create-test", {
       method: "POST",
       body: JSON.stringify(data),
