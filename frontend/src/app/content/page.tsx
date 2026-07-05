@@ -178,7 +178,7 @@ export default function ContentPage() {
     <>
       <header className="header">
         <h1>Управление контентом</h1>
-        <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
           <button
             className="btn btn-primary"
             style={{ background: "var(--success)" }}
@@ -192,6 +192,22 @@ export default function ContentPage() {
             }}
           >
             Синхронизировать кодификатор
+          </button>
+          <button
+            className="btn btn-primary"
+            style={{ background: "#3b82f6" }}
+            onClick={async () => {
+              const themeCode = prompt("Код темы для синхронизации (например: 8. или 4.):");
+              if (!themeCode) return;
+              try {
+                const res = await api.syncTheme(themeCode, auth.token!);
+                setSuccess(`Синхронизация темы ${themeCode} запущена (задача: ${res.task_id.slice(0, 8)}...)`);
+              } catch (e: any) {
+                setError(e.message);
+              }
+            }}
+          >
+            Синхронизировать тему (с изображениями)
           </button>
           <Link href="/dashboard" className="btn btn-primary">Дашборд</Link>
           <button className="btn btn-danger" onClick={logout}>Выйти</button>
