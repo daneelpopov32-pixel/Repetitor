@@ -2,19 +2,29 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { slideUp } from "@/lib/motion";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import Button from "@/components/ui/Button";
+import Badge from "@/components/ui/Badge";
+import Modal from "@/components/ui/Modal";
+import Spinner from "@/components/ui/Spinner";
+import EmptyState from "@/components/ui/EmptyState";
 
 export default function AttemptPage() {
   const { id: attemptId } = useParams();
   const { auth, hydrated } = useAuth();
   const router = useRouter();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [tasks, setTasks] = useState<any[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [remaining, setRemaining] = useState<number | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [attempt, setAttempt] = useState<any>(null);
   const [submitted, setSubmitted] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [result, setResult] = useState<any>(null);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const [showInfo, setShowInfo] = useState(false);
@@ -23,513 +33,210 @@ export default function AttemptPage() {
 
   useEffect(() => {
     if (!hydrated) return;
-    if (!auth.token) {
-      router.replace("/auth/login");
-      return;
-    }
+    if (!auth.token) { router.replace("/auth/login"); return; }
     loadData();
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [auth.token, hydrated, attemptId]);
 
   const loadData = async () => {
     try {
       const att = await api.getAttempt(attemptId as string, auth.token!);
       setAttempt(att);
-      if (att.status !== "IN_PROGRESS") {
-        setSubmitted(true);
-        return;
-      }
+      if (att.status !== "IN_PROGRESS") { setSubmitted(true); return; }
       const taskData = await api.getAttemptTasks(attemptId as string, auth.token!);
       setTasks(taskData.tasks || []);
-
-      // Load existing answers
-      const existingAnswers: Record<string, string> = {};
-      for (const t of taskData.tasks || []) {
-        if (t.text_content?.student_input) {
-          existingAnswers[t.task_id] = t.text_content.student_input;
-        }
-      }
-      setAnswers(existingAnswers);
-
+      const ea: Record<string, string> = {};
+      for (const t of taskData.tasks || []) { if (t.text_content?.student_input) ea[t.task_id] = t.text_content.student_input; }
+      setAnswers(ea);
       if (att.time_limit_minutes && att.started_at) {
-        const started = new Date(att.started_at).getTime();
-        const limit = att.time_limit_minutes * 60 * 1000;
-        const serverNow = new Date(att.server_time).getTime();
-        const elapsed = serverNow - started;
-        const left = Math.max(0, Math.floor((limit - elapsed) / 1000));
-
-        if (left <= 0) {
-          // Time expired server-side — mark as submitted
-          setSubmitted(true);
-          return;
-        }
-
+        const left = Math.max(0, Math.floor(((new Date(att.server_time).getTime() - new Date(att.started_at).getTime()) * -1 + att.time_limit_minutes * 60000) / 1000));
+        if (left <= 0) { setSubmitted(true); return; }
         setRemaining(left);
-
-        timerRef.current = setInterval(() => {
-          setRemaining((prev) => {
-            if (prev === null || prev <= 1) {
-              if (timerRef.current) clearInterval(timerRef.current);
-              setSubmitted(true);
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
+        timerRef.current = setInterval(() => { setRemaining((p) => { if (p === null || p <= 1) { clearInterval(timerRef.current!); setSubmitted(true); return 0; } return p - 1; }); }, 1000);
       }
     } catch {}
   };
 
-  const saveAnswer = useCallback(
-    async (taskId: string, value: string) => {
-      setSaveStatus("saving");
-      try {
-        await api.saveAnswer(attemptId as string, taskId, value, auth.token!);
-        setSaveStatus("saved");
-      } catch {
-        setSaveStatus("error");
-      }
-    },
-    [attemptId, auth.token]
-  );
+  const saveAnswer = useCallback(async (taskId: string, value: string) => {
+    setSaveStatus("saving");
+    try { await api.saveAnswer(attemptId as string, taskId, value, auth.token!); setSaveStatus("saved"); } catch { setSaveStatus("error"); }
+  }, [attemptId, auth.token]);
 
   const handleChange = (taskId: string, value: string) => {
-    setAnswers((prev) => ({ ...prev, [taskId]: value }));
+    setAnswers((p) => ({ ...p, [taskId]: value }));
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => saveAnswer(taskId, value), 1000);
   };
 
-  const handleGridInput = (taskId: string, index: number, value: string, maxIndex: number) => {
+  const handleGridInput = (taskId: string, index: number, value: string, max: number) => {
     if (value && !/^[1-9]$/.test(value)) return;
-    setAnswers((prev) => {
-      const current = prev[taskId] || "";
-      const parts = current.split("");
-      parts[index] = value;
-      const newAnswer = parts.join("").slice(0, maxIndex + 1);
-      return { ...prev, [taskId]: newAnswer };
-    });
+    setAnswers((p) => { const c = (p[taskId] || "").split(""); c[index] = value; return { ...p, [taskId]: c.join("").slice(0, max + 1) }; });
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const current = answers[taskId] || "";
-      const parts = current.split("");
-      parts[index] = value;
-      saveAnswer(taskId, parts.join("").slice(0, maxIndex + 1));
-    }, 1000);
-    if (value) {
-      const nextInput = document.querySelector(
-        `[data-task="${taskId}"][data-index="${index + 1}"]`
-      ) as HTMLInputElement;
-      if (nextInput) nextInput.focus();
-    }
-  };
-
-  const handleGridKeydown = (
-    e: React.KeyboardEvent,
-    taskId: string,
-    index: number
-  ) => {
-    if (e.key === "Backspace") {
-      const current = answers[taskId] || "";
-      if (!current[index] && index > 0) {
-        const prevInput = document.querySelector(
-          `[data-task="${taskId}"][data-index="${index - 1}"]`
-        ) as HTMLInputElement;
-        if (prevInput) prevInput.focus();
-      }
-    }
+    debounceRef.current = setTimeout(() => { const c = (answers[taskId] || "").split(""); c[index] = value; saveAnswer(taskId, c.join("").slice(0, max + 1)); }, 1000);
+    if (value) { const next = document.querySelector(`[data-task="${taskId}"][data-index="${index + 1}"]`) as HTMLInputElement; if (next) next.focus(); }
   };
 
   const handleSubmit = async () => {
+    if (!confirm("Завершить тест?")) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    for (const [taskId, value] of Object.entries(answers)) {
-      await saveAnswer(taskId, value);
-    }
-    try {
-      const res = await api.submitAttempt(attemptId as string, auth.token!);
-      setResult(res);
-      setSubmitted(true);
-      if (timerRef.current) clearInterval(timerRef.current);
-    } catch {}
+    for (const [tid, val] of Object.entries(answers)) await saveAnswer(tid, val);
+    try { const res = await api.submitAttempt(attemptId as string, auth.token!); setResult(res); setSubmitted(true); if (timerRef.current) clearInterval(timerRef.current); } catch {}
   };
 
-  const formatTime = (seconds: number) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-  };
+  const fmt = (s: number) => `${Math.floor(s / 3600).toString().padStart(2, "0")}:${Math.floor((s % 3600) / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
-  const getTaskText = (task: any): string => {
-    const tc = task.text_content;
-    if (typeof tc === "object" && tc !== null) return tc.text || "";
-    return tc || "";
-  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getText = (t: any): string => { const tc = t.text_content; return typeof tc === "object" && tc?.text ? tc.text : tc || ""; };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getInstruction = (t: any): string => { const text = getText(t); const tc = t.text_content; const lines = text.split("\n"); const inst: string[] = []; for (const l of lines) { const tr = l.trim(); if (!tr) continue; if (tc?.matching_left?.length && /^[А-Я]\)/.test(tr)) break; if (tc?.sequence_items?.length && /^\d+\)/.test(tr)) break; inst.push(tr); } return inst.join(" ") || text; };
 
-  if (submitted && result) {
-    return (
-      <div className="test-screen">
-        <div className="task-card" style={{ textAlign: "center" }}>
-          <h1 style={{ marginBottom: "1rem" }}>Тест завершён!</h1>
-          <p>Статус: <span className="badge badge-info">{result.status}</span></p>
-          <p>Балл: <strong>{result.auto_score}</strong> / {result.max_auto_score}</p>
-          {result.pending_essay_count > 0 && (
-            <p style={{ color: "#666" }}>
-              {result.pending_essay_count} задание(я) ожидают проверки
-            </p>
-          )}
-          <button
-            className="submit-button"
-            style={{ marginTop: "1.5rem" }}
-            onClick={() => router.push("/dashboard")}
-          >
-            На главную
-          </button>
-        </div>
-      </div>
-    );
-  }
+  if (submitted && result) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--c-bg)" }}>
+      <motion.div className="card" style={{ textAlign: "center", maxWidth: 400, width: "100%" }} {...slideUp}>
+        <div style={{ fontSize: 48, marginBottom: "1rem" }}>🎉</div>
+        <h1 style={{ fontSize: "var(--text-2xl)", fontWeight: 700, marginBottom: "1rem" }}>Тест завершён!</h1>
+        <Badge variant="info" style={{ marginBottom: "0.75rem" }}>{result.status}</Badge>
+        <p style={{ fontSize: "var(--text-2xl)", fontWeight: 700, marginBottom: "0.5rem" }}>{result.auto_score} / {result.max_auto_score}</p>
+        {result.pending_essay_count > 0 && <p style={{ color: "var(--c-text-secondary)", fontSize: "var(--text-sm)" }}>{result.pending_essay_count} заданий ожидают проверки</p>}
+        <Button onClick={() => router.push("/dashboard")} style={{ marginTop: "1.5rem" }}>На главную</Button>
+      </motion.div>
+    </div>
+  );
 
-  if (submitted && !result) {
-    return (
-      <div className="test-screen">
-        <div className="task-card" style={{ textAlign: "center" }}>
-          Время истекло. Тест завершён.
-        </div>
-      </div>
-    );
-  }
+  if (submitted) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><p style={{ color: "var(--c-text-secondary)" }}>Время истекло. Тест завершён.</p></div>;
+  if (tasks.length === 0) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><Spinner size="lg" /></div>;
 
-  if (tasks.length === 0) {
-    return (
-      <div className="test-screen">
-        <div className="task-card" style={{ textAlign: "center" }}>
-          Загрузка заданий...
-        </div>
-      </div>
-    );
-  }
-
-  const currentTask = tasks[currentIdx];
-  const tc = currentTask.text_content;
-  const taskText = getTaskText(currentTask);
+  const task = tasks[currentIdx];
+  const tc = task.text_content;
+  const text = getText(task);
   const isMatching = tc?.matching_left && tc?.matching_right;
   const isSequence = tc?.sequence_items;
-  const answer = answers[currentTask.task_id] || "";
-
-  // Extract column titles from text
-  const getLeftTitle = () => {
-    if (!isMatching) return "";
-    const text = taskText;
-    const match = text.match(/([А-Я]+(?:\s[А-Я]+)*)\s*\n\s*[А-Я]\)/m);
-    if (match) return match[1];
-    const possibleTitles = ["СОБЫТИЕ", "СОБЫТИЯ", "ПРОЦЕССЫ", "ФАКТЫ", "ГОД", "ГОДЫ",
-      "УЧАСТНИКИ", "ФРАГМЕНТЫ ИСТОЧНИКОВ", "ХАРАКТЕРИСТИКИ", "ПАМЯТНИКИ КУЛЬТУРЫ",
-      "ПРОИЗВЕДЕНИЯ КУЛЬТУРЫ", "НАЧАЛА СУЖДЕНИЙ"];
-    for (const t of possibleTitles) {
-      if (text.includes(t)) return t;
-    }
-    return "ЛЕВЫЙ СТОЛБЕЦ";
-  };
-
-  const getRightTitle = () => {
-    if (!isMatching) return "";
-    const text = taskText;
-    const possibleTitles = ["ГОД", "ГОДЫ", "ФАКТЫ", "УЧАСТНИКИ", "ХАРАКТЕРИСТИКИ",
-      "ВАРИАНТЫ ЗАВЕРШЕНИЯ", "ВАРИАНТЫ ЗАВЕРШЕНИЯ СУЖДЕНИЙ"];
-    for (const t of possibleTitles) {
-      if (text.includes(t)) return t;
-    }
-    return "ПРАВЫЙ СТОЛБЕЦ";
-  };
-
-  // Get instruction from text (first paragraph before column titles)
-  const getInstruction = () => {
-    const lines = taskText.split("\n");
-    const instructionLines: string[] = [];
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      if (tc?.matching_left?.length && /^[А-Я]\)/.test(trimmed)) break;
-      if (tc?.sequence_items?.length && /^\d+\)/.test(trimmed)) break;
-      instructionLines.push(trimmed);
-    }
-    return instructionLines.join(" ") || taskText;
-  };
+  const answer = answers[task.task_id] || "";
+  const isWarning = remaining !== null && remaining < 300;
+  const isCritical = remaining !== null && remaining < 60;
 
   return (
-    <div className="test-screen">
-      {/* Test Header */}
-      <div className="test-header">
-        <div className="test-title">{attempt?.test_title || "Тест"}</div>
-        {remaining !== null && (
-          <div
-            className={`timer ${remaining < 60 ? "critical" : remaining < 300 ? "warning" : ""}`}
-          >
-            {formatTime(remaining)}
-          </div>
-        )}
-        <button className="submit-button" onClick={handleSubmit}>
-          Завершить тест
-        </button>
-      </div>
-
-      {/* Task Navigation */}
-      <div className="task-navigation">
-        <button
-          className="nav-button"
-          disabled={currentIdx === 0}
-          onClick={() => setCurrentIdx((i) => i - 1)}
-        >
-          ← Предыдущее
-        </button>
-        <span className="task-counter">
-          Задание {currentIdx + 1} из {tasks.length}
-        </span>
-        <button
-          className="nav-button"
-          disabled={currentIdx === tasks.length - 1}
-          onClick={() => setCurrentIdx((i) => i + 1)}
-        >
-          Следующее →
-        </button>
-      </div>
-
-      {/* Task Card */}
-      <div className="task-container">
-        <div className="task-card">
-          {/* Task Header */}
-          <div className="task-header">
-            <span className="task-type-badge">
-              Тип {currentTask.exam_position || "?"} № {currentTask.block_id || currentTask.task_id?.slice(0, 8)}
+    <div style={{ minHeight: "100vh", background: "var(--c-bg)" }}>
+      {/* Top bar */}
+      <div style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--c-surface)", borderBottom: "1px solid var(--c-border)", padding: "0.75rem 1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontWeight: 600 }}>{attempt?.test_title || "Тест"}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          {remaining !== null && (
+            <span style={{ fontFamily: "monospace", fontSize: "var(--text-lg)", fontWeight: 700, color: isCritical ? "var(--c-danger)" : isWarning ? "var(--c-warning)" : "var(--c-text)" }}>
+              {fmt(remaining)}
             </span>
-            <button
-              className="task-info-icon"
-              style={{ cursor: "pointer", fontSize: "0.85rem", padding: "0.1rem 0.3rem", border: "1px solid #ccc", borderRadius: "4px", background: "white" }}
-              onClick={() => setShowInfo(true)}
-            >
-              i
-            </button>
-          </div>
-
-          {/* Info Modal */}
-          {showInfo && (
-            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-              <div className="card" style={{ maxWidth: 500, width: "90%" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                  <h3 style={{ margin: 0 }}>Информация о задании</h3>
-                  <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2rem" }} onClick={() => setShowInfo(false)}>Close</button>
-                </div>
-                <p style={{ fontSize: "0.9rem", lineHeight: 1.6 }}>
-                  Раздел кодификатора ФИПИ/Решу ЕГЭ: {currentTask.theme_name || currentTask.theme_id}
-                </p>
-                <p style={{ fontSize: "0.9rem", lineHeight: 1.6 }}>
-                  Тип задания: {currentTask.exam_position ? `Тип ${currentTask.exam_position}` : "—"}
-                  {currentTask.difficulty_level ? ` (${currentTask.difficulty_level})` : ""}
-                </p>
-              </div>
-            </div>
           )}
+          <Button variant="primary" size="sm" onClick={handleSubmit}>Завершить</Button>
+        </div>
+      </div>
 
-          {/* Instruction */}
-          <div className="task-instruction">{getInstruction()}</div>
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: "1.5rem" }}>
+        {/* Nav */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+          <Button variant="ghost" size="sm" disabled={currentIdx === 0} onClick={() => setCurrentIdx((i) => i - 1)}>← Назад</Button>
+          <span style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>{currentIdx + 1} / {tasks.length}</span>
+          <Button variant="ghost" size="sm" disabled={currentIdx === tasks.length - 1} onClick={() => setCurrentIdx((i) => i + 1)}>Вперёд →</Button>
+        </div>
 
-          {/* Images */}
-          {tc?.images && tc.images.length > 0 && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", margin: "1rem 0" }}>
-              {tc.images.map((imgPath: string, i: number) => (
-                <div key={i} style={{ position: "relative" }}>
-                  <span style={{ position: "absolute", top: 4, left: 4, background: "rgba(0,0,0,0.6)", color: "white", padding: "0.1rem 0.4rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, zIndex: 1 }}>
-                    {i + 1})
-                  </span>
-                  <img
-                    src={`/api/v1/media/images/${imgPath.split("/").pop()}`}
-                    alt={`${i + 1}`}
-                    style={{ width: "100%", display: "block", border: "1px solid #e0e0e0", borderRadius: "4px" }}
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                    }}
-                  />
-                </div>
-              ))}
+        {/* Task */}
+        <motion.div key={task.task_id} {...slideUp}>
+          <div className="card">
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+              <Badge variant="info">Тип {task.exam_position || "?"}</Badge>
+              <Button variant="ghost" size="sm" onClick={() => setShowInfo(true)}>ℹ</Button>
             </div>
-          )}
 
-          {/* Content: Matching */}
-          {isMatching && (
-            <div className="task-content matching-layout">
-              <div className="matching-columns">
-                <div className="column left-column">
-                  <div className="column-title">{getLeftTitle()}</div>
-                  <div className="column-items">
-                    {tc.matching_left.map((item: any, j: number) => (
-                      <div key={j} className="item">
-                        {item.label}) {item.text}
-                      </div>
-                    ))}
+            {/* Images */}
+            {tc?.images?.filter((p: string) => p != null && p.length > 0).length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "0.75rem", margin: "1rem 0" }}>
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                {tc.images.filter((p: any) => p != null && p.length > 0).map((imgPath: string, i: number) => (
+                  <div key={i}>
+                    <img src={`/api/v1/media/images/${imgPath.split("/").pop()}`} alt={`${i + 1}`} style={{ width: "100%", display: "block", borderRadius: "var(--r-md)", border: "1px solid var(--c-border)" }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                   </div>
-                </div>
-                <div className="column right-column">
-                  <div className="column-title">{getRightTitle()}</div>
-                  <div className="column-items">
-                    {tc.matching_right.map((item: any, j: number) => (
-                      <div key={j} className="item">
-                        {item.label}) {item.text}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Content: Chronology */}
-          {isSequence && (
-            <div className="task-content chronology-layout">
-              <ol className="events-list">
-                {tc.sequence_items.map((item: any, j: number) => (
-                  <li key={j} className="event-item">
-                    {item.text}
-                  </li>
                 ))}
-              </ol>
-            </div>
-          )}
-
-          {/* Content: Default (short_answer/essay) */}
-          {!isMatching && !isSequence && (
-            <div className="task-content">
-              {(() => {
-                const opts = tc?.options;
-                if (opts && Array.isArray(opts) && opts.length > 0) {
-                  const flatOpts = Array.isArray(opts[0]) ? opts[0] : opts;
-                  return (
-                    <div>
-                      {flatOpts.map((opt: string, i: number) => (
-                        <div key={i} className="item" style={{ marginBottom: "8px" }}>
-                          {String.fromCharCode(65 + i)}) {opt}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                }
-                return (
-                  <textarea
-                    style={{
-                      width: "100%",
-                      minHeight: 150,
-                      padding: "12px",
-                      border: "1px solid #ccc",
-                      borderRadius: "4px",
-                      fontSize: "14px",
-                      fontFamily: "inherit",
-                    }}
-                    value={answer}
-                    onChange={(e) => handleChange(currentTask.task_id, e.target.value)}
-                    placeholder="Введите ответ..."
-                  />
-                );
-              })()}
-            </div>
-          )}
-
-          {/* Answer Section: Matching grid */}
-          {isMatching && (
-            <>
-              <div className="answer-instruction">
-                Запишите в ответ цифры, расположив их в порядке, соответствующем буквам:
               </div>
-              <div className="answer-grid">
-                <table className="answer-table">
+            )}
+
+            {/* Instruction */}
+            <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.6, marginBottom: "1rem" }}>{getInstruction(task)}</p>
+
+            {/* Matching content */}
+            {isMatching && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", marginBottom: "1.5rem" }}>
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                <div><div style={{ fontWeight: 600, textAlign: "center", marginBottom: "0.5rem", fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>Левый столбец</div>{tc.matching_left.map((item: any, j: number) => <div key={j} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{item.label}) {item.text}</div>)}</div>
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                <div><div style={{ fontWeight: 600, textAlign: "center", marginBottom: "0.5rem", fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>Правый столбец</div>{tc.matching_right.map((item: any, j: number) => <div key={j} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{item.label}) {item.text}</div>)}</div>
+              </div>
+            )}
+
+            {/* Sequence content */}
+            {isSequence && (
+              <ol style={{ paddingLeft: "1.25rem", marginBottom: "1.5rem" }}>
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                {tc.sequence_items.map((item: any, j: number) => <li key={j} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{item.text}</li>)}
+              </ol>
+            )}
+
+            {/* Default content */}
+            {!isMatching && !isSequence && (() => {
+              const opts = tc?.options;
+              if (opts && Array.isArray(opts) && opts.length > 0) {
+                const flat = Array.isArray(opts[0]) ? opts[0] : opts;
+                return <div style={{ marginBottom: "1rem" }}>{/* eslint-disable-next-line @typescript-eslint/no-explicit-any */flat.map((opt: string, i: number) => <div key={i} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{String.fromCharCode(65 + i)}) {opt}</div>)}</div>;
+              }
+              return <textarea style={{ width: "100%", minHeight: 120, padding: "0.75rem", border: "1px solid var(--c-border)", borderRadius: "var(--r-md)", fontFamily: "var(--font)", fontSize: "var(--text-sm)", resize: "vertical" }} value={answer} onChange={(e) => handleChange(task.task_id, e.target.value)} placeholder="Введите ответ..." />;
+            })()}
+
+            {/* Answer grid for matching */}
+            {isMatching && (
+              <div style={{ marginTop: "1rem" }}>
+                <p style={{ fontSize: "var(--text-sm)", marginBottom: "0.5rem" }}>Запишите цифры в порядке букв:</p>
+                <table style={{ borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
-                      {tc.matching_left.map((item: any, j: number) => (
-                        <th key={j}>{item.label}</th>
-                      ))}
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                      {tc.matching_left.map((item: any, j: number) => <th key={j} style={{ padding: "0.5rem", border: "1px solid var(--c-border)", fontWeight: 600, fontSize: "var(--text-sm)" }}>{item.label}</th>)}
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      {tc.matching_left.map((item: any, j: number) => (
-                        <td key={j}>
-                          <input
-                            type="text"
-                            maxLength={1}
-                            className="answer-input"
-                            data-task={currentTask.task_id}
-                            data-index={j}
-                            value={answer[j] || ""}
-                            onChange={(e) =>
-                              handleGridInput(
-                                currentTask.task_id,
-                                j,
-                                e.target.value,
-                                tc.matching_left.length - 1
-                              )
-                            }
-                            onKeyDown={(e) =>
-                              handleGridKeydown(e, currentTask.task_id, j)
-                            }
-                          />
-                        </td>
-                      ))}
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                      {tc.matching_left.map((item: any, j: number) => <td key={j} style={{ padding: 0, border: "1px solid var(--c-border)" }}><input type="text" maxLength={1} data-task={task.task_id} data-index={j} value={answer[j] || ""} onChange={(e) => handleGridInput(task.task_id, j, e.target.value, tc.matching_left.length - 1)} style={{ width: "100%", height: 40, border: "none", textAlign: "center", fontSize: "var(--text-lg)", outline: "none" }} /></td>)}
                     </tr>
                   </tbody>
                 </table>
-                <div className="watermark">ege.sdamgia.ru</div>
               </div>
-            </>
-          )}
+            )}
 
-          {/* Answer Section: Final answer */}
-          <div className="final-answer">
-            <label className="answer-label">Ответ:</label>
-            <input
-              type="text"
-              className="final-answer-input"
-              value={answer}
-              onChange={(e) => handleChange(currentTask.task_id, e.target.value)}
-              placeholder={
-                isMatching
-                  ? "Введите ответ"
-                  : isSequence
-                  ? "Введите последовательность цифр"
-                  : "Введите ответ"
-              }
-            />
+            {/* Final answer */}
+            {!isMatching && (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "1rem" }}>
+                <span style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>Ответ:</span>
+                <input type="text" value={answer} onChange={(e) => handleChange(task.task_id, e.target.value)} placeholder="Введите ответ" style={{ flex: 1, maxWidth: 400, padding: "0.5rem 0.75rem", border: "1px solid var(--c-border)", borderRadius: "var(--r-md)", fontSize: "var(--text-sm)" }} />
+              </div>
+            )}
           </div>
+        </motion.div>
+
+        {/* Autosave */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.75rem", borderRadius: "var(--r-md)", fontSize: "var(--text-xs)", marginTop: "0.75rem", background: saveStatus === "saving" ? "var(--c-warning-bg)" : saveStatus === "error" ? "var(--c-danger-bg)" : "var(--c-success-bg)", color: saveStatus === "saving" ? "#854d0e" : saveStatus === "error" ? "#991b1b" : "#166534" }}>
+          {saveStatus === "saved" ? "✓ Сохранено" : saveStatus === "saving" ? "⏳ Сохранение..." : "✕ Ошибка"}
+        </div>
+
+        {/* Bottom nav */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "1rem" }}>
+          <Button variant="ghost" size="sm" disabled={currentIdx === 0} onClick={() => setCurrentIdx((i) => i - 1)}>← Назад</Button>
+          <span style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>{currentIdx + 1} / {tasks.length}</span>
+          <Button variant="ghost" size="sm" disabled={currentIdx === tasks.length - 1} onClick={() => setCurrentIdx((i) => i + 1)}>Вперёд →</Button>
         </div>
       </div>
 
-      {/* Autosave Status */}
-      <div className={`autosave-status ${saveStatus === "saving" ? "saving" : saveStatus === "error" ? "error" : ""}`}>
-        <span className="status-icon">{saveStatus === "saved" ? "✓" : saveStatus === "saving" ? "⏳" : "✕"}</span>
-        <span className="status-text">
-          {saveStatus === "saved" ? "Сохранено" : saveStatus === "saving" ? "Сохранение..." : "Ошибка сохранения"}
-        </span>
-      </div>
-
-      {/* Bottom Navigation */}
-      <div className="task-navigation" style={{ marginTop: "16px" }}>
-        <button
-          className="nav-button"
-          disabled={currentIdx === 0}
-          onClick={() => setCurrentIdx((i) => i - 1)}
-        >
-          ← Предыдущее
-        </button>
-        <span className="task-counter">
-          Задание {currentIdx + 1} из {tasks.length}
-        </span>
-        <button
-          className="nav-button"
-          disabled={currentIdx === tasks.length - 1}
-          onClick={() => setCurrentIdx((i) => i + 1)}
-        >
-          Следующее →
-        </button>
-      </div>
+      <Modal open={showInfo} onClose={() => setShowInfo(false)} title="Информация о задании">
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>Тема: {task.theme_name || task.theme_id}</p>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>Тип: {task.exam_position ? `Тип ${task.exam_position}` : "—"}{task.difficulty_level ? ` (${task.difficulty_level})` : ""}</p>
+      </Modal>
     </div>
   );
 }

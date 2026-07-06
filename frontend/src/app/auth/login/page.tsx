@@ -4,49 +4,76 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import Link from "next/link";
+import { motion } from "framer-motion";
+import { scaleIn } from "@/lib/motion";
+import Input from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const { setAuth } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setLoading(true);
     try {
       const res = await api.login({ email, password });
       setAuth({ token: res.access_token, userId: res.user_id, role: res.role, email });
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Ошибка входа");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Ошибка входа");
     }
+    setLoading(false);
   };
 
   return (
-    <div className="container" style={{ maxWidth: 400, marginTop: "4rem" }}>
-      <div className="card">
-        <h1 style={{ marginBottom: "1.5rem", textAlign: "center" }}>Вход</h1>
-        {error && <div className="error">{error}</div>}
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
-          <div className="form-group">
-            <label>Пароль</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          </div>
-          <button type="submit" className="btn btn-primary" style={{ width: "100%" }}>
+    <div className="layout-auth" style={{ background: "var(--c-bg)" }}>
+      <motion.div
+        className="card"
+        style={{ width: "100%", maxWidth: 400, padding: "2rem" }}
+        {...scaleIn}
+      >
+        <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+          <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🎓</div>
+          <h1 style={{ fontSize: "var(--text-2xl)", fontWeight: 700 }}>Репетитор</h1>
+          <p style={{ color: "var(--c-text-secondary)", fontSize: "var(--text-sm)" }}>
+            Войдите в свой аккаунт
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <Input
+            label="Email"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <Input
+            label="Пароль"
+            type="password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          {error && <div className="error-text">{error}</div>}
+          <Button type="submit" loading={loading} style={{ width: "100%", marginTop: "0.5rem" }}>
             Войти
-          </button>
+          </Button>
         </form>
-        <p style={{ marginTop: "1rem", textAlign: "center", fontSize: "0.875rem" }}>
-          Нет аккаунта? <Link href="/auth/register">Зарегистрироваться</Link>
+
+        <p style={{ textAlign: "center", marginTop: "1.5rem", fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>
+          Нет аккаунта?{" "}
+          <a href="/auth/register" style={{ fontWeight: 500 }}>Зарегистрироваться</a>
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 }

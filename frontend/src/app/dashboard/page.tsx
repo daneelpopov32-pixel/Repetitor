@@ -4,248 +4,188 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import Link from "next/link";
+import { motion } from "framer-motion";
+import { slideUp, stagger } from "@/lib/motion";
+import Sidebar from "@/components/layout/Sidebar";
+import PageWrapper from "@/components/layout/PageWrapper";
+import Card from "@/components/ui/Card";
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
+import Avatar from "@/components/ui/Avatar";
+import ProgressBar from "@/components/ui/ProgressBar";
+import EmptyState from "@/components/ui/EmptyState";
+import Spinner from "@/components/ui/Spinner";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function TutorDashboard({ token }: { token: string }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [students, setStudents] = useState<any[]>([]);
+  const [inviteCode, setInviteCode] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getTutorStudents(token).then(setStudents).catch(() => {}).finally(() => setLoading(false));
+  }, [token]);
+
+  const generateCode = async () => {
+    const res = await api.generateInvitationCode(30, token);
+    setInviteCode(res.code);
+  };
+
+  if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: "3rem" }}><Spinner size="lg" /></div>;
+
+  return (
+    <PageWrapper
+      title="Главная"
+      actions={
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          {inviteCode && (
+            <code style={{ padding: "0.25rem 0.75rem", background: "var(--c-hover)", borderRadius: "var(--r-md)", fontSize: "var(--text-sm)" }}>
+              {inviteCode}
+            </code>
+          )}
+          <Button variant="secondary" onClick={generateCode}>Пригласить ученика</Button>
+        </div>
+      }
+    >
+      {/* Stats */}
+      <motion.div className="grid grid-3" style={{ marginBottom: "1.5rem" }} {...stagger}>
+        <motion.div {...slideUp}>
+          <Card>
+            <div style={{ color: "var(--c-text-secondary)", fontSize: "var(--text-sm)", marginBottom: "0.25rem" }}>Учеников</div>
+            <div style={{ fontSize: "var(--text-3xl)", fontWeight: 700 }}>{students.length}</div>
+          </Card>
+        </motion.div>
+        <motion.div {...slideUp}>
+          <Card>
+            <div style={{ color: "var(--c-text-secondary)", fontSize: "var(--text-sm)", marginBottom: "0.25rem" }}>Средний балл</div>
+            <div style={{ fontSize: "var(--text-3xl)", fontWeight: 700 }}>
+              {students.length > 0
+                ? Math.round(students.reduce((s: number, st: Record<string, unknown>) => s + ((st.average_score as number) || 0), 0) / students.length)
+                : "—"}
+            </div>
+          </Card>
+        </motion.div>
+        <motion.div {...slideUp}>
+          <Card>
+            <div style={{ color: "var(--c-text-secondary)", fontSize: "var(--text-sm)", marginBottom: "0.25rem" }}>Всего тестов</div>
+            <div style={{ fontSize: "var(--text-3xl)", fontWeight: 700 }}>
+              {students.reduce((s: number, st: Record<string, unknown>) => s + ((st.test_count as number) || 0), 0)}
+            </div>
+          </Card>
+        </motion.div>
+      </motion.div>
+
+      {/* Students */}
+      {students.length === 0 ? (
+        <EmptyState icon="👥" title="Пока нет учеников" text="Пригласите ученика по коду или создайте тест" />
+      ) : (
+        <motion.div className="grid grid-2" {...stagger}>
+          {students.map((s: Record<string, unknown>, idx: number) => (
+            <motion.div key={String(s.id || idx)} {...slideUp}>
+              <Card hover>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
+                  <Avatar name={`${s.first_name || ""} ${s.last_name || ""}`.trim() || "У"} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600 }}>{String(s.first_name || "")} {String(s.last_name || "")}</div>
+                    <div style={{ fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>{String(s.email || "")}</div>
+                  </div>
+                  <Badge variant={((s.average_score as number) || 0) >= 70 ? "success" : ((s.average_score as number) || 0) >= 40 ? "warning" : "danger"}>
+                    {String(s.average_score || 0)}%
+                  </Badge>
+                </div>
+                <ProgressBar value={((s.average_score as number) || 0)} variant={((s.average_score as number) || 0) >= 70 ? "success" : "default"} />
+                <div style={{ fontSize: "var(--text-xs)", color: "var(--c-text-secondary)", marginTop: "0.5rem" }}>
+                  {String(s.test_count || 0)} тестов
+                </div>
+              </Card>
+            </motion.div>
+          ))}
+        </motion.div>
+      )}
+    </PageWrapper>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function StudentDashboard({ token }: { token: string }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [tests, setTests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    api.getStudentTests(token).then(setTests).catch(() => {}).finally(() => setLoading(false));
+  }, [token]);
+
+  if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: "3rem" }}><Spinner size="lg" /></div>;
+
+  const startTest = async (testId: string) => {
+    try {
+      const res = await api.startAttempt(testId, token);
+      router.push(`/tests/${res.attempt_id}/attempt`);
+    } catch {}
+  };
+
+  return (
+    <PageWrapper title="Мои тесты">
+      {tests.length === 0 ? (
+        <EmptyState icon="📋" title="Пока нет тестов" text="Репетитор назначит вам тест — он появится здесь" />
+      ) : (
+        <motion.div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }} {...stagger}>
+          {tests.map((t: Record<string, unknown>, idx: number) => {
+            const status = t.status as string;
+            const score = t.score as number | null;
+            return (
+              <motion.div key={String(t.test_id || idx)} {...slideUp}>
+                <Card hover onClick={status !== "COMPLETED" ? () => startTest(t.test_id as string) : undefined}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>{String(t.title || "Тест")}</div>
+                      <div style={{ fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>
+                        {String(t.task_count || 0)} заданий{t.time_limit ? ` • ${t.time_limit} мин` : ""}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                      {score !== null && score !== undefined && (
+                        <span style={{ fontWeight: 600, fontSize: "var(--text-lg)" }}>{String(score)}%</span>
+                      )}
+                      <Badge variant={
+                        status === "COMPLETED" ? "success" :
+                        status === "IN_PROGRESS" ? "warning" : "info"
+                      }>
+                        {status === "COMPLETED" ? "Пройден" :
+                         status === "IN_PROGRESS" ? "В процессе" : "Начать"}
+                      </Badge>
+                    </div>
+                  </div>
+                </Card>
+              </motion.div>
+            );
+          })}
+        </motion.div>
+      )}
+    </PageWrapper>
+  );
+}
 
 export default function DashboardPage() {
   const { auth, hydrated, logout } = useAuth();
   const router = useRouter();
-  const [data, setData] = useState<any>(null);
 
   useEffect(() => {
-    if (!hydrated) return;
-    if (!auth.token) {
-      router.replace("/auth/login");
-      return;
-    }
-    if (auth.role === "TUTOR") {
-      loadTutorDashboard();
-    } else {
-      loadStudentDashboard();
-    }
-  }, [auth.token, hydrated]);
+    if (hydrated && !auth.token) router.replace("/auth/login");
+  }, [hydrated, auth.token, router]);
 
-  const loadTutorDashboard = async () => {
-    try {
-      const students = await api.getTutorStudents(auth.token!);
-      setData({ students });
-    } catch {}
-  };
-
-  const loadStudentDashboard = async () => {
-    try {
-      const [dash, assignedTests] = await Promise.all([
-        api.getDashboard(auth.userId!, auth.token!),
-        api.getStudentTests(auth.token!),
-      ]);
-      setData({ dashboard: dash, assignedTests });
-    } catch {}
-  };
-
-  if (!hydrated || !data) return <div className="container" style={{ padding: "2rem" }}>Загрузка...</div>;
+  if (!hydrated || !auth.token) return <div className="layout-auth"><Spinner size="lg" /></div>;
 
   return (
-    <>
-      <header className="header">
-        <h1>Репетитор</h1>
-        <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-          <span style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-            {auth.email} ({auth.role})
-          </span>
-          {auth.role === "TUTOR" && (
-            <>
-              <Link href="/content" className="btn btn-primary" style={{ background: "var(--success)" }}>
-                Контент
-              </Link>
-              <Link href="/tests" className="btn btn-primary">
-                Мои тесты
-              </Link>
-              <Link href="/tests/new" className="btn btn-primary">
-                Создать тест
-              </Link>
-            </>
-          )}
-          <button className="btn btn-danger" onClick={logout}>
-            Выйти
-          </button>
-        </div>
-      </header>
-      <main className="container" style={{ padding: "2rem" }}>
-        {auth.role === "TUTOR" ? (
-          <TutorDashboard data={data} token={auth.token!} />
-        ) : (
-          <StudentDashboard data={data} token={auth.token!} />
-        )}
-      </main>
-    </>
-  );
-}
-
-function TutorDashboard({ data, token }: { data: any; token: string }) {
-  const [inviteCode, setInviteCode] = useState("");
-  const [showCode, setShowCode] = useState(false);
-
-  const generateCode = async () => {
-    try {
-      const res = await api.generateInvitationCode(7, token);
-      setInviteCode(res.code);
-      setShowCode(true);
-    } catch {}
-  };
-
-  return (
-    <div>
-      <h2 style={{ marginBottom: "1rem" }}>Мои ученики</h2>
-      <div style={{ marginBottom: "1rem" }}>
-        <button className="btn btn-primary" onClick={generateCode}>
-          Сгенерировать код приглашения
-        </button>
-        {showCode && (
-          <span style={{ marginLeft: "1rem", fontFamily: "monospace", fontSize: "1.1rem" }}>
-            {inviteCode}
-          </span>
-        )}
-      </div>
-      {!data.students?.length ? (
-        <div className="card" style={{ textAlign: "center", padding: "2rem" }}>
-          <p style={{ color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Пока нет учеников</p>
-          <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-            Сгенерируйте код приглашения и передайте его ученику для регистрации.
-          </p>
-        </div>
-      ) : (
-        <div className="grid">
-          {data.students.map((s: any) => (
-            <div key={s.student_id} className="card">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <strong>Ученик</strong>
-                  <div style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-                    Тестов: {s.total_tests} | Средний балл: {s.average_score}%
-                  </div>
-                </div>
-                <Link href={`/dashboard?view=student&id=${s.student_id}`} className="btn btn-primary">
-                  Подробнее
-                </Link>
-              </div>
-              {s.weak_themes?.length > 0 && (
-                <div style={{ marginTop: "0.5rem" }}>
-                  <span style={{ fontSize: "0.75rem", color: "var(--danger)" }}>Слабые темы: </span>
-                  {s.weak_themes.map((t: any) => (
-                    <span key={t.theme_id} className="badge badge-warning" style={{ marginRight: "0.25rem" }}>
-                      {t.name} ({t.success_rate}%)
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StudentDashboard({ data, token }: { data: any; token: string }) {
-  const router = useRouter();
-  const [starting, setStarting] = useState<string | null>(null);
-  const dash = data.dashboard;
-  const assignedTests = data.assignedTests || [];
-
-  const startTest = async (testId: string) => {
-    setStarting(testId);
-    try {
-      const res = await api.startAttempt(testId, token);
-      router.push(`/tests/${res.attempt_id}/attempt`);
-    } catch (e: any) {
-      alert(e.message || "Ошибка при запуске теста");
-    }
-    setStarting(null);
-  };
-
-  const continueTest = (attemptId: string) => {
-    router.push(`/tests/${attemptId}/attempt`);
-  };
-
-  return (
-    <div>
-      {/* Assigned Tests */}
-      {assignedTests.length > 0 && (
-        <div style={{ marginBottom: "2rem" }}>
-          <h2 style={{ marginBottom: "1rem" }}>Назначенные тесты</h2>
-          {assignedTests.map((t: any) => (
-            <div key={t.test_id} className="card" style={{ marginBottom: "0.75rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <strong>{t.title}</strong>
-                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
-                    {t.tasks_count} заданий
-                    {t.time_limit_minutes ? ` | ${t.time_limit_minutes} мин` : ""}
-                  </div>
-                </div>
-                <div>
-                  {t.attempt_status === "COMPLETED" ? (
-                    <span className="badge badge-success">Пройден</span>
-                  ) : t.attempt_id ? (
-                    <button
-                      className="btn btn-primary"
-                      style={{ background: "var(--success)" }}
-                      onClick={() => continueTest(t.attempt_id)}
-                    >
-                      Продолжить
-                    </button>
-                  ) : (
-                    <button
-                      className="btn btn-primary"
-                      disabled={starting === t.test_id}
-                      onClick={() => startTest(t.test_id)}
-                    >
-                      {starting === t.test_id ? "Запуск..." : "Начать тест"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Statistics */}
-      <h2 style={{ marginBottom: "1rem" }}>Мой прогресс</h2>
-      <div className="grid grid-2">
-        <div className="card">
-          <h3>Общая статистика</h3>
-          <p>Тестов пройдено: <strong>{dash.total_tests}</strong></p>
-          <p>Средний балл: <strong>{dash.average_score}%</strong></p>
-        </div>
-        <div className="card">
-          <h3>Динамика</h3>
-          {dash.dynamics.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-              {dash.dynamics.slice(-5).map((d: any, i: number) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>{d.date}</span>
-                  <span className={`badge ${d.score >= 70 ? "badge-success" : "badge-warning"}`}>
-                    {d.score}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p style={{ color: "var(--text-secondary)" }}>Нет данных</p>
-          )}
-        </div>
-      </div>
-      {dash.weak_themes?.length > 0 && (
-        <div className="card" style={{ marginTop: "1rem" }}>
-          <h3 style={{ color: "var(--danger)" }}>Слабые темы (менее 50%)</h3>
-          {dash.weak_themes.map((t: any) => (
-            <div key={t.theme_id} style={{ display: "flex", justifyContent: "space-between", padding: "0.5rem 0" }}>
-              <span>{t.name}</span>
-              <span className="badge badge-warning">{t.success_rate}%</span>
-            </div>
-          ))}
-        </div>
-      )}
+    <div className="layout">
+      <Sidebar />
+      {auth.role === "TUTOR"
+        ? <TutorDashboard token={auth.token} />
+        : <StudentDashboard token={auth.token} />
+      }
     </div>
   );
 }

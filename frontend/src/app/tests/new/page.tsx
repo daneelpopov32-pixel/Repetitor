@@ -2,16 +2,32 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { motion, AnimatePresence } from "framer-motion";
+import { slideUp, expand } from "@/lib/motion";
+import Sidebar from "@/components/layout/Sidebar";
+import PageWrapper from "@/components/layout/PageWrapper";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
+import Select from "@/components/ui/Select";
+import Badge from "@/components/ui/Badge";
+import Spinner from "@/components/ui/Spinner";
+import EmptyState from "@/components/ui/EmptyState";
+import ProgressBar from "@/components/ui/ProgressBar";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ThemeNode = any;
 
 export default function NewTestPage() {
   const { auth, hydrated } = useAuth();
   const router = useRouter();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [subjects, setSubjects] = useState<any[]>([]);
   const [selectedSubject, setSelectedSubject] = useState("");
-  const [themeTree, setThemeTree] = useState<any[]>([]);
+  const [themeTree, setThemeTree] = useState<ThemeNode[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [taskCounts, setTaskCounts] = useState<Record<string, { test: number; essay: number }>>({});
   const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
   const [expandedThemes, setExpandedThemes] = useState<Set<string>>(new Set());
@@ -23,515 +39,212 @@ export default function NewTestPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingCounts, setLoadingCounts] = useState(false);
-
-  // Async creation state
   const [creating, setCreating] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [progress, setProgress] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [result, setResult] = useState<any>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
-
-  // EGE generation state
   const [egeLoading, setEgeLoading] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [egeResult, setEgeResult] = useState<any>(null);
   const [egeError, setEgeError] = useState("");
 
   useEffect(() => {
     if (!hydrated) return;
-    if (!auth.token || auth.role !== "TUTOR") {
-      router.replace("/auth/login");
-      return;
-    }
-    loadSubjects();
+    if (!auth.token || auth.role !== "TUTOR") { router.replace("/auth/login"); return; }
+    api.getSubjects(auth.token).then(setSubjects).catch(() => {}).finally(() => setLoading(false));
   }, [auth.token, hydrated]);
 
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, []);
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
-  const loadSubjects = async () => {
+  const loadThemes = async (sid: string) => {
+    setSelectedSubject(sid); setSelectedThemes([]); setError(""); setResult(null);
+    setLoadingCounts(true); setThemeTree([]); setTaskCounts({});
+    try { const d = await api.getThemeTree(sid, auth.token!); setThemeTree(d.themes || []); } catch { setLoadingCounts(false); return; }
     try {
-      const data = await api.getSubjects(auth.token!);
-      setSubjects(data);
+      const fc = await api.getFipiCounts(sid, auth.token!);
+      const c: Record<string, { test: number; essay: number }> = {};
+      for (const x of fc) { if (x.fipi_code) c[x.fipi_code] = { test: x.test_count, essay: x.essay_count }; if (x.theme_id) c[x.theme_id] = { test: x.test_count, essay: x.essay_count }; }
+      setTaskCounts(c);
     } catch {}
-    setLoading(false);
-  };
-
-  const loadThemes = async (subjectId: string) => {
-    setSelectedSubject(subjectId);
-    setSelectedThemes([]);
-    setError("");
-    setResult(null);
-    setLoadingCounts(true);
-    setThemeTree([]);
-    setTaskCounts({});
-
-    // Step 1: Load theme tree immediately
-    try {
-      const treeData = await api.getThemeTree(subjectId, auth.token!);
-      setThemeTree(treeData.themes || []);
-    } catch (e: any) {
-      console.error("Failed to load theme tree:", e);
-      setLoadingCounts(false);
-      return;
-    }
-
-    // Step 2: Load FIPI counts separately (may be slow)
-    try {
-      const fipiCounts = await api.getFipiCounts(subjectId, auth.token!);
-      const counts: Record<string, { test: number; essay: number; error?: string }> = {};
-      for (const c of fipiCounts) {
-        if (c.fipi_code) {
-          counts[c.fipi_code] = { test: c.test_count, essay: c.essay_count, error: c.error };
-        }
-        if (c.theme_id) {
-          counts[c.theme_id] = { test: c.test_count, essay: c.essay_count, error: c.error };
-        }
-      }
-      setTaskCounts(counts);
-    } catch (e: any) {
-      console.error("FIPI counts failed, tree still available:", e);
-    }
     setLoadingCounts(false);
   };
 
-  const toggleTheme = (id: string) => {
-    setSelectedThemes((prev) =>
-      prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]
-    );
-  };
+  const toggleTheme = (id: string) => setSelectedThemes((p) => p.includes(id) ? p.filter((t) => t !== id) : [...p, id]);
+  const toggleExpand = (id: string) => setExpandedThemes((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  const toggleAllChildren = (node: any) => {
-    const collectIds = (n: any): string[] => {
-      let ids = [n.id];
-      (n.children || []).forEach((c: any) => (ids = ids.concat(collectIds(c))));
-      return ids;
-    };
-    const ids = collectIds(node);
-    const allSelected = ids.every((id) => selectedThemes.includes(id));
-    if (allSelected) {
-      setSelectedThemes((prev) => prev.filter((t) => !ids.includes(t)));
-    } else {
-      setSelectedThemes((prev) => [...new Set([...prev, ...ids])]);
-    }
-  };
-
-  // Collect all theme codes (including children) for selected themes
-  const collectThemeCodes = useCallback((nodes: any[], selected: string[]): string[] => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const collectThemeCodes = useCallback((nodes: any[], sel: string[]): string[] => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let codes: string[] = [];
-    for (const n of nodes) {
-      if (selected.includes(n.id) && n.fipi_code) {
-        codes.push(n.fipi_code);
-      }
-      if (n.children) {
-        codes = codes.concat(collectThemeCodes(n.children, selected));
-      }
-    }
+    for (const n of nodes) { if (sel.includes(n.id) && n.fipi_code) codes.push(n.fipi_code); if (n.children) codes = codes.concat(collectThemeCodes(n.children, sel)); }
     return codes;
   }, []);
 
-  const toggleExpand = (id: string) => {
-    setExpandedThemes((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getCounts = (node: any) => node.fipi_code && taskCounts[node.fipi_code] ? taskCounts[node.fipi_code] : taskCounts[node.id] || null;
 
-  const getCountsForTheme = (node: any): { test: number; essay: number; error?: string } | null => {
-    // Try by fipi_code first, then by theme_id
-    if (node.fipi_code && taskCounts[node.fipi_code]) {
-      return taskCounts[node.fipi_code];
-    }
-    if (taskCounts[node.id]) {
-      return taskCounts[node.id];
-    }
-    return null;
-  };
-
-  const renderTree = (nodes: any[], depth = 0) => {
-    return nodes.map((node) => {
-      const counts = getCountsForTheme(node);
-      const totalTasks = (counts?.test || 0) + (counts?.essay || 0);
-      const hasChildren = node.children && node.children.length > 0;
-      const isExpanded = expandedThemes.has(node.id);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const renderTree = (nodes: ThemeNode[], depth = 0): React.ReactNode =>
+    nodes.map((node) => {
+      const counts = getCounts(node);
+      const total = (counts?.test || 0) + (counts?.essay || 0);
+      const has = node.children?.length > 0;
+      const exp = expandedThemes.has(node.id);
       return (
-        <div key={node.id} style={{ paddingLeft: depth * 1.5 + "rem" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.25rem 0" }}>
-            <input
-              type="checkbox"
-              checked={selectedThemes.includes(node.id)}
-              onChange={() => toggleTheme(node.id)}
-            />
-            {hasChildren ? (
-              <span
-                style={{ cursor: "pointer", color: "var(--primary)", fontSize: "0.75rem", userSelect: "none", width: "1rem", textAlign: "center" }}
-                onClick={() => toggleExpand(node.id)}
-              >
-                {isExpanded ? "−" : "+"}
-              </span>
-            ) : (
-              <span style={{ width: "1rem" }} />
-            )}
-            <span
-              style={{ cursor: hasChildren ? "pointer" : "default", fontSize: "0.875rem" }}
-              onClick={() => hasChildren && toggleExpand(node.id)}
-            >
-              {node.fipi_code ? `${node.fipi_code} ` : ""}{node.name}
+        <div key={node.id}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", paddingLeft: depth * 16 }}>
+            <input type="checkbox" checked={selectedThemes.includes(node.id)} onChange={() => toggleTheme(node.id)} />
+            {has ? <span onClick={(e) => { e.stopPropagation(); toggleExpand(node.id); }} style={{ cursor: "pointer", fontSize: 10, width: 14, textAlign: "center" }}>{exp ? "−" : "+"}</span> : <span style={{ width: 14 }} />}
+            <span style={{ fontSize: "var(--text-sm)", cursor: has ? "pointer" : "default" }} onClick={() => has && toggleExpand(node.id)}>
+              {node.fipi_code && <span style={{ color: "var(--c-text-tertiary)", marginRight: 4 }}>{node.fipi_code}</span>}
+              {node.name}
             </span>
-            {counts && totalTasks > 0 && (
-              <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
-                (ФИПИ: {counts.test} TEST, {counts.essay} ESSAY)
-              </span>
-            )}
-            {counts && totalTasks === 0 && !counts.error && !loadingCounts && (
-              <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
-                (заданий пока нет)
-              </span>
-            )}
-            {counts && counts.error && !loadingCounts && (
-              <span style={{ fontSize: "0.75rem", color: "var(--danger)" }}>
-                (ошибка загрузки)
-              </span>
-            )}
-            {!counts && !loadingCounts && (
-              <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
-                (заданий пока нет)
-              </span>
-            )}
-            {loadingCounts && (
-              <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
-                (загрузка...)
-              </span>
-            )}
+            {counts && total > 0 && <span style={{ fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>({counts.test}T {counts.essay}E)</span>}
+            {!counts && !loadingCounts && <span style={{ fontSize: "var(--text-xs)", color: "var(--c-text-tertiary)" }}>нет заданий</span>}
+            {loadingCounts && <Spinner size="sm" />}
           </label>
-          {hasChildren && isExpanded && renderTree(node.children, depth + 1)}
+          <AnimatePresence>{has && exp && <motion.div {...expand}>{renderTree(node.children, depth + 1)}</motion.div>}</AnimatePresence>
         </div>
       );
     });
-  };
 
   const canCreate = title.trim() && selectedThemes.length > 0 && !creating;
-
-  const getValidationError = (): string | null => {
-    if (!title.trim()) return "Введите название теста";
-    if (!selectedSubject) return "Выберите предмет";
-    if (selectedThemes.length === 0) return "Выберите хотя бы одну тему";
-    return null;
-  };
+  const validationError = !title.trim() ? "Введите название" : selectedThemes.length === 0 ? "Выберите темы" : null;
 
   const handleCreate = async () => {
-    const validationError = getValidationError();
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-    setError("");
-    setCreating(true);
-    setProgress({ status: "Запускаем создание теста..." });
-
+    if (validationError) { setError(validationError); return; }
+    setError(""); setCreating(true); setProgress({ status: "Запускаем..." });
     try {
-      const themeCodes = collectThemeCodes(themeTree, selectedThemes);
-      const res = await api.createTestAsync(
-        {
-          title: title.trim(),
-          theme_codes: themeCodes,
-          count_per_theme: parseInt(countPerTheme) || 5,
-          task_type: taskType,
-          time_limit_minutes: timeLimit ? parseInt(timeLimit) : undefined,
-          exam_positions: selectedPositions.length > 0 ? selectedPositions : undefined,
-        },
-        auth.token!
-      );
+      const res = await api.createTestAsync({ title: title.trim(), theme_codes: collectThemeCodes(themeTree, selectedThemes), count_per_theme: parseInt(countPerTheme) || 5, task_type: taskType, time_limit_minutes: timeLimit ? parseInt(timeLimit) : undefined, exam_positions: selectedPositions.length > 0 ? selectedPositions : undefined }, auth.token!);
       setTaskId(res.task_id);
-      pollStatus(res.task_id);
-    } catch (err: any) {
-      setError(err.message);
-      setCreating(false);
-      setProgress(null);
-    }
+      pollRef.current = setInterval(async () => {
+        try {
+          const s = await api.getTaskStatus(res.task_id, auth.token!);
+          setProgress(s);
+          if (s.status === "SUCCESS") { clearInterval(pollRef.current!); setResult(s.result); setCreating(false); setProgress(null); }
+          else if (s.status === "FAILURE") { clearInterval(pollRef.current!); setError(s.error || "Ошибка"); setCreating(false); setProgress(null); }
+        } catch {}
+      }, 2000);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); setCreating(false); setProgress(null); }
   };
 
-  const pollStatus = (tid: string) => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(async () => {
-      try {
-        const status = await api.getTaskStatus(tid, auth.token!);
-        setProgress(status);
-
-        if (status.status === "SUCCESS") {
-          clearInterval(pollRef.current!);
-          setResult(status.result);
-          setCreating(false);
-          setProgress(null);
-        } else if (status.status === "FAILURE") {
-          clearInterval(pollRef.current!);
-          setError(status.error || "Ошибка при создании теста");
-          setCreating(false);
-          setProgress(null);
-        }
-      } catch {}
-    }, 2000);
-  };
-
-  const handleGenerateEGE = async () => {
-    setEgeLoading(true);
-    setEgeError("");
-    setEgeResult(null);
-    try {
-      const res = await api.generateEGE({}, auth.token!);
-      setEgeResult(res);
-    } catch (e: any) {
-      setEgeError(e.message);
-    }
+  const handleEGE = async () => {
+    setEgeLoading(true); setEgeError(""); setEgeResult(null);
+    try { const r = await api.generateEGE({}, auth.token!); setEgeResult(r); }
+    catch (e: unknown) { setEgeError(e instanceof Error ? e.message : "Ошибка"); }
     setEgeLoading(false);
   };
 
-  if (loading || !hydrated) return <div className="container" style={{ padding: "2rem" }}>Загрузка...</div>;
+  if (loading) return <div className="layout"><Sidebar /><div className="layout-content" style={{ display: "flex", justifyContent: "center", padding: "3rem" }}><Spinner size="lg" /></div></div>;
 
-  if (subjects.length === 0) {
-    return (
-      <div className="container" style={{ maxWidth: 600, padding: "2rem" }}>
-        <h1 style={{ marginBottom: "1.5rem" }}>Создать тест</h1>
-        <div className="card" style={{ textAlign: "center", padding: "3rem" }}>
-          <h2 style={{ marginBottom: "1rem", color: "var(--text-secondary)" }}>Нет доступных предметов</h2>
-          <p style={{ color: "var(--text-secondary)", marginBottom: "1.5rem" }}>
-            Сначала синхронизируйте кодификатор тем из ФИПИ
-          </p>
-          <Link href="/content" className="btn btn-primary">
-            Управление контентом
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  if (subjects.length === 0) return <div className="layout"><Sidebar /><PageWrapper title="Создать тест"><EmptyState icon="📚" title="Нет предметов" text="Синхронизируйте кодификатор из ФИПИ" action={<Button onClick={() => router.push("/content")}>Контент</Button>} /></PageWrapper></div>;
 
-  if (result) {
-    return (
-      <div className="container" style={{ maxWidth: 600, padding: "2rem" }}>
-        <div className="card" style={{ textAlign: "center", padding: "3rem" }}>
-          <h2 style={{ marginBottom: "1rem", color: "var(--success)" }}>Тест создан!</h2>
-          <p style={{ marginBottom: "0.5rem" }}>
-            <strong>{result.title}</strong>
-          </p>
-          <p style={{ color: "var(--text-secondary)", marginBottom: "1.5rem" }}>
-            Добавлено заданий: {result.tasks_count}
-          </p>
-          {result.theme_stats && Object.keys(result.theme_stats).length > 0 && (
-            <div style={{ marginBottom: "1.5rem", textAlign: "left" }}>
-              <p style={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: "0.25rem" }}>По темам:</p>
-              {Object.entries(result.theme_stats).map(([code, count]) => (
-                <div key={code} style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-                  Тема {code}: {String(count)} заданий
-                  {String(count) === "0" && (
-                    <span style={{ color: "var(--danger)", marginLeft: "0.5rem" }}>
-                      — задания не найдены на ФИПИ (возможно, тема из другого предмета)
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-          {result.tasks_count === 0 && (
-            <div style={{ padding: "0.75rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "var(--radius)", color: "var(--danger)", marginBottom: "1rem", fontSize: "0.875rem" }}>
-              Ни по одной из выбранных тем не удалось найти задания на ФИПИ. Проверьте, что темы относятся к нужному предмету.
-            </div>
-          )}
-          <div style={{ display: "flex", gap: "1rem", justifyContent: "center" }}>
-            <Link href="/dashboard" className="btn btn-primary">На дашборд</Link>
-            <button className="btn" style={{ background: "var(--border)" }} onClick={() => { setResult(null); setTitle(""); setSelectedThemes([]); }}>
-              Создать ещё
-            </button>
+  if (result) return (
+    <div className="layout"><Sidebar />
+      <PageWrapper title="Тест создан!">
+        <Card style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: "1rem" }}>✅</div>
+          <h2 style={{ marginBottom: "0.5rem" }}>{result.title}</h2>
+          <p style={{ color: "var(--c-text-secondary)", marginBottom: "1rem" }}>Добавлено заданий: {result.tasks_count}</p>
+          {result.theme_stats && Object.entries(result.theme_stats).map(([code, count]) => (
+            <div key={code} style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>Тема {code}: {String(count)} заданий{String(count) === "0" && <span style={{ color: "var(--c-danger)" }}> — не найдены</span>}</div>
+          ))}
+          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", marginTop: "1.5rem" }}>
+            <Button onClick={() => router.push("/dashboard")}>На дашборд</Button>
+            <Button variant="secondary" onClick={() => { setResult(null); setTitle(""); setSelectedThemes([]); }}>Создать ещё</Button>
           </div>
-        </div>
-      </div>
-    );
-  }
+        </Card>
+      </PageWrapper>
+    </div>
+  );
 
   return (
-    <div className="container" style={{ maxWidth: 800, padding: "2rem" }}>
-      <h1 style={{ marginBottom: "1.5rem" }}>Создать тест</h1>
+    <div className="layout"><Sidebar />
+      <PageWrapper title="Создать тест">
+        {error && <div style={{ padding: "0.75rem 1rem", background: "var(--c-danger-bg)", borderRadius: "var(--r-md)", color: "var(--c-danger)", marginBottom: "1rem", display: "flex", justifyContent: "space-between" }}><span>{error}</span><button onClick={() => setError("")} style={{ background: "none", border: "none", cursor: "pointer" }}>✕</button></div>}
 
-      {error && (
-        <div style={{ padding: "0.75rem 1rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "var(--radius)", color: "var(--danger)", marginBottom: "1rem" }}>
-          {error}
-          <button onClick={() => setError("")} style={{ marginLeft: "0.5rem", background: "none", border: "none", cursor: "pointer", color: "var(--danger)" }}>✕</button>
-        </div>
-      )}
-
-      {creating && (
-        <div className="card" style={{ textAlign: "center", padding: "2rem", marginBottom: "1rem" }}>
-          <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>⏳</div>
-          <p style={{ fontWeight: 500 }}>{progress?.status || progress?.meta?.status || "Обработка..."}</p>
-          {progress?.meta?.tasks_found !== undefined && (
-            <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-              Найдено заданий: {progress.meta.tasks_found}
-            </p>
-          )}
-          <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", marginTop: "0.5rem" }}>
-            Пожалуйста, не закрывайте страницу
-          </p>
-        </div>
-      )}
-
-      <div className="card">
-        <div className="form-group">
-          <label>Название теста</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например: Диагностический тест по истории" disabled={creating} />
-        </div>
-        <div className="grid grid-2" style={{ gap: "0.75rem" }}>
-          <div className="form-group">
-            <label>Лимит времени (минут)</label>
-            <input type="number" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} min="1" placeholder="Без таймера" disabled={creating} />
-          </div>
-          <div className="form-group">
-            <label>Заданий на тему</label>
-            <input type="number" value={countPerTheme} onChange={(e) => setCountPerTheme(e.target.value)} min="1" disabled={creating} />
-          </div>
-        </div>
-        <div className="form-group">
-          <label>Тип заданий</label>
-          <select value={taskType} onChange={(e) => setTaskType(e.target.value)} disabled={creating}>
-            <option value="TEST">Только TEST</option>
-            <option value="ESSAY">Только ESSAY</option>
-            <option value="MIX">Микс (TEST + ESSAY)</option>
-          </select>
-        </div>
-        <div className="form-group">
-          <label>Типы КИМ (позиции 1-21) <span style={{ fontWeight: 400, fontSize: "0.8rem", color: "var(--text-secondary)" }}>— необязательно</span></label>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
-            {Array.from({ length: 21 }, (_, i) => i + 1).map((pos) => (
-              <button
-                key={pos}
-                type="button"
-                className={`btn ${selectedPositions.includes(pos) ? "btn-primary" : ""}`}
-                style={{
-                  padding: "0.25rem 0.5rem",
-                  fontSize: "0.8rem",
-                  minWidth: "2rem",
-                  background: selectedPositions.includes(pos) ? "var(--primary)" : "var(--border)",
-                  color: selectedPositions.includes(pos) ? "white" : "var(--text)",
-                }}
-                onClick={() => {
-                  setSelectedPositions((prev) =>
-                    prev.includes(pos) ? prev.filter((p) => p !== pos) : [...prev, pos]
-                  );
-                }}
-                disabled={creating}
-              >
-                {pos}
-              </button>
-            ))}
-          </div>
-          {selectedPositions.length > 0 && (
-            <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
-              Выбрано: {selectedPositions.join(", ")}
-              <button
-                type="button"
-                style={{ marginLeft: "0.5rem", background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: "0.8rem" }}
-                onClick={() => setSelectedPositions([])}
-              >
-                очистить
-              </button>
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="card">
-        <h3 style={{ marginBottom: "1rem" }}>Выберите предмет</h3>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          {subjects.map((s) => (
-            <button
-              key={s.id}
-              className={`btn ${selectedSubject === s.id ? "btn-primary" : ""}`}
-              style={!selectedSubject || selectedSubject !== s.id ? { background: "var(--border)", color: "var(--text)" } : {}}
-              onClick={() => loadThemes(s.id)}
-              disabled={creating}
-            >
-              {s.name}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {selectedSubject && themeTree.length === 0 && !loadingCounts && (
-        <div className="card" style={{ textAlign: "center", padding: "2rem" }}>
-          <p style={{ color: "var(--text-secondary)", marginBottom: "0.5rem" }}>Кодификатор тем не загружен</p>
-          <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-            Обратитесь к администратору для синхронизации тем из ФИПИ
-          </p>
-        </div>
-      )}
-
-      {themeTree.length > 0 && (
-        <div className="card">
-          <h3 style={{ marginBottom: "1rem" }}>
-            Темы <span style={{ fontWeight: 400, fontSize: "0.875rem" }}>(выбрано: {selectedThemes.length})</span>
-            {loadingCounts && <span style={{ fontWeight: 400, fontSize: "0.75rem", color: "var(--text-secondary)", marginLeft: "0.5rem" }}>Загрузка данных ФИПИ...</span>}
-          </h3>
-          <div style={{ maxHeight: 400, overflow: "auto" }}>{renderTree(themeTree)}</div>
-        </div>
-      )}
-
-      <div style={{ marginTop: "1rem" }}>
-        {!canCreate && !creating && (
-          <div style={{ fontSize: "0.875rem", color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
-            {getValidationError()}
-          </div>
+        {creating && (
+          <Card style={{ textAlign: "center", marginBottom: "1rem" }}>
+            <Spinner size="lg" />
+            <p style={{ fontWeight: 500, marginTop: "0.75rem" }}>{progress?.status || progress?.meta?.status || "Обработка..."}</p>
+            {progress?.meta?.tasks_found !== undefined && <p style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>Найдено: {progress.meta.tasks_found}</p>}
+          </Card>
         )}
-        <div style={{ display: "flex", gap: "1rem" }}>
-          <button
-            className="btn btn-primary"
-            onClick={handleCreate}
-            disabled={!canCreate}
-            style={!canCreate ? { opacity: 0.5, cursor: "not-allowed" } : {}}
-          >
-            {creating ? "Создание..." : "Создать тест"}
-          </button>
-          <button className="btn" style={{ background: "var(--border)" }} onClick={() => router.back()} disabled={creating}>
-            Отмена
-          </button>
-        </div>
-      </div>
 
-      {/* EGE Generator section */}
-      <div className="card" style={{ marginTop: "1.5rem" }}>
-        <h3 style={{ marginBottom: "0.5rem" }}>Генератор варианта ЕГЭ</h3>
-        <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
-          Автоматически соберёт полный вариант из 21 задания по структуре реального экзамена (210 минут).
-          Задания берутся из локальной базы — сначала запустите синхронизацию с ФИПИ.
-        </p>
-        {egeResult && (
-          <div style={{ padding: "0.75rem", background: "#dcfce7", border: "1px solid #bbf7d0", borderRadius: "var(--radius)", color: "#166534", marginBottom: "1rem", fontSize: "0.875rem" }}>
-            Вариант создан: <strong>{egeResult.title}</strong> ({egeResult.tasks_count} заданий, {egeResult.time_limit_minutes} мин)
-            {egeResult.warnings?.length > 0 && (
-              <div style={{ marginTop: "0.5rem", color: "var(--danger)" }}>
-                {egeResult.warnings.map((w: string, i: number) => <div key={i}>{w}</div>)}
+        <motion.div style={{ display: "flex", flexDirection: "column", gap: "1rem" }} {...slideUp}>
+          {/* Settings */}
+          <Card>
+            <h3 style={{ fontSize: "var(--text-lg)", fontWeight: 600, marginBottom: "1rem" }}>Параметры</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <Input label="Название теста" placeholder="Например: Диагностический тест по истории" value={title} onChange={(e) => setTitle(e.target.value)} disabled={creating} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem" }}>
+                <Input label="Лимит (мин)" type="number" placeholder="Без таймера" value={timeLimit} onChange={(e) => setTimeLimit(e.target.value)} disabled={creating} />
+                <Input label="Заданий на тему" type="number" value={countPerTheme} onChange={(e) => setCountPerTheme(e.target.value)} disabled={creating} />
+                <Select label="Тип" value={taskType} onChange={(e) => setTaskType(e.target.value)} options={[{ value: "TEST", label: "TEST" }, { value: "ESSAY", label: "ESSAY" }, { value: "MIX", label: "Микс" }]} />
               </div>
-            )}
-            <div style={{ marginTop: "0.5rem" }}>
-              <Link href={`/tests/${egeResult.test_id}`} style={{ fontWeight: 500 }}>Открыть тест →</Link>
             </div>
+          </Card>
+
+          {/* Position filter */}
+          <Card>
+            <h3 style={{ fontSize: "var(--text-lg)", fontWeight: 600, marginBottom: "0.75rem" }}>Типы КИМ <span style={{ fontWeight: 400, fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>необязательно</span></h3>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {Array.from({ length: 21 }, (_, i) => i + 1).map((p) => (
+                <motion.button key={p} whileTap={{ scale: 0.9 }}
+                  style={{ padding: "4px 8px", borderRadius: "var(--r-sm)", border: "1px solid", fontSize: "var(--text-xs)", fontWeight: 500, cursor: "pointer",
+                    background: selectedPositions.includes(p) ? "var(--c-primary)" : "var(--c-surface)",
+                    color: selectedPositions.includes(p) ? "white" : "var(--c-text)",
+                    borderColor: selectedPositions.includes(p) ? "var(--c-primary)" : "var(--c-border)" }}
+                  onClick={() => setSelectedPositions((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p])} disabled={creating}
+                >{p}</motion.button>
+              ))}
+            </div>
+            {selectedPositions.length > 0 && <div style={{ marginTop: 8 }}><Badge>{selectedPositions.join(", ")}</Badge> <button onClick={() => setSelectedPositions([])} style={{ background: "none", border: "none", color: "var(--c-danger)", fontSize: "var(--text-xs)", cursor: "pointer" }}>очистить</button></div>}
+          </Card>
+
+          {/* Subjects */}
+          <Card>
+            <h3 style={{ fontSize: "var(--text-lg)", fontWeight: 600, marginBottom: "0.75rem" }}>Предмет</h3>
+            <div style={{ display: "flex", gap: 8 }}>
+              {subjects.map((s) => (
+                <motion.button key={s.id} whileTap={{ scale: 0.97 }}
+                  style={{ padding: "6px 16px", borderRadius: "var(--r-md)", border: "1px solid", cursor: "pointer", fontWeight: 500, fontSize: "var(--text-sm)",
+                    background: selectedSubject === s.id ? "var(--c-primary)" : "var(--c-surface)",
+                    color: selectedSubject === s.id ? "white" : "var(--c-text)",
+                    borderColor: selectedSubject === s.id ? "var(--c-primary)" : "var(--c-border)" }}
+                  onClick={() => loadThemes(s.id)} disabled={creating}
+                >{s.name}</motion.button>
+              ))}
+            </div>
+          </Card>
+
+          {/* Theme tree */}
+          {themeTree.length > 0 && (
+            <Card>
+              <h3 style={{ fontSize: "var(--text-lg)", fontWeight: 600, marginBottom: "0.75rem" }}>Темы <span style={{ fontWeight: 400, fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>({selectedThemes.length} выбрано)</span></h3>
+              <div style={{ maxHeight: 400, overflowY: "auto" }}>{renderTree(themeTree)}</div>
+            </Card>
+          )}
+
+          {/* Create button */}
+          <div style={{ display: "flex", gap: "0.75rem" }}>
+            <Button onClick={handleCreate} disabled={!canCreate}>{creating ? "Создание..." : "Создать тест"}</Button>
+            <Button variant="secondary" onClick={() => router.back()} disabled={creating}>Отмена</Button>
           </div>
-        )}
-        {egeError && (
-          <div style={{ padding: "0.75rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "var(--radius)", color: "var(--danger)", marginBottom: "1rem", fontSize: "0.875rem" }}>
-            {egeError}
-          </div>
-        )}
-        <button
-          className="btn btn-primary"
-          onClick={handleGenerateEGE}
-          disabled={egeLoading}
-          style={{ background: "#7c3aed" }}
-        >
-          {egeLoading ? "Генерация..." : "Сгенерировать вариант ЕГЭ"}
-        </button>
-      </div>
+
+          {/* EGE Generator */}
+          <Card>
+            <h3 style={{ fontSize: "var(--text-lg)", fontWeight: 600, marginBottom: "0.5rem" }}>Генератор варианта ЕГЭ</h3>
+            <p style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)", marginBottom: "1rem" }}>Автоматически соберёт полный вариант из 21 задания (210 мин).</p>
+            {egeResult && <div style={{ padding: "0.75rem", background: "var(--c-success-bg)", borderRadius: "var(--r-md)", color: "#166534", marginBottom: "1rem", fontSize: "var(--text-sm)" }}>Вариант: <strong>{egeResult.title}</strong> ({egeResult.tasks_count} заданий) <a href={`/tests/${egeResult.test_id}`}>Открыть →</a></div>}
+            {egeError && <div style={{ padding: "0.75rem", background: "var(--c-danger-bg)", borderRadius: "var(--r-md)", color: "var(--c-danger)", marginBottom: "1rem", fontSize: "var(--text-sm)" }}>{egeError}</div>}
+            <Button variant="secondary" onClick={handleEGE} loading={egeLoading}>Сгенерировать вариант ЕГЭ</Button>
+          </Card>
+        </motion.div>
+      </PageWrapper>
     </div>
   );
 }

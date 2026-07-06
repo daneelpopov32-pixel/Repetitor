@@ -126,7 +126,8 @@ export const api = {
     if (params.subject_id) q.set("subject_id", params.subject_id);
     if (params.theme_id) q.set("theme_id", params.theme_id);
     if (params.task_type) q.set("task_type", params.task_type);
-    return request<any[]>(`/content/tasks?${q.toString()}`, { token });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return request<any>(`/content/tasks?${q.toString()}`, { token });
   },
 
   syncCodifier: (subjectName: string, token: string) =>
