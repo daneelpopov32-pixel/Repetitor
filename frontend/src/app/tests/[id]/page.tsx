@@ -321,7 +321,7 @@ export default function TestDetailPage() {
               {/* Images */}
               {currentTask.text_content?.images && currentTask.text_content.images.length > 0 && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", margin: "1rem 0" }}>
-                  {currentTask.text_content.images.map((imgPath: string, i: number) => (
+                  {currentTask.text_content.images.filter((p: string) => p != null && p.length > 0).map((imgPath: string, i: number) => (
                     <div key={i} style={{ position: "relative" }}>
                       <span style={{ position: "absolute", top: 4, left: 4, background: "rgba(0,0,0,0.6)", color: "white", padding: "0.1rem 0.4rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, zIndex: 1 }}>
                         {i + 1})

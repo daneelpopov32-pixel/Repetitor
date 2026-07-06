@@ -5,6 +5,7 @@ Downloads images from FIPI URLs, saves locally, and returns local paths.
 Handles broken images by marking them in metadata.
 """
 import os
+import re
 import hashlib
 import logging
 from pathlib import Path
@@ -15,6 +16,12 @@ logger = logging.getLogger(__name__)
 
 # Base directory for downloaded images
 MEDIA_DIR = Path("/app/media/images")
+
+# FIPI project ID for EGE History
+FIPI_PROJECT_ID = "068A227D253BA6C04D0C832387FD0D89"
+
+# Pattern to extract GUID from bare filenames like xs3docsrc{GUID}_{n}_{ts}.ext
+_BARE_GUID_RE = re.compile(r'xs3docsrc([A-Fa-f0-9]{32})')
 
 
 def _ensure_media_dir():
@@ -45,7 +52,14 @@ def download_image(url: str, timeout: int = 15) -> str | None:
     elif url.startswith("docs/"):
         url = f"https://ege.fipi.ru/{url}"
     elif not url.startswith("http"):
-        url = f"https://ege.fipi.ru/bank/{url}"
+        # Bare filename (e.g. xs3docsrc{GUID}_{n}_{ts}.jpg)
+        # Construct proper URL: docs/{project_id}/docs/{guid}/{filename}
+        m = _BARE_GUID_RE.search(url)
+        if m:
+            guid = m.group(1)
+            url = f"https://ege.fipi.ru/docs/{FIPI_PROJECT_ID}/docs/{guid}/{url}"
+        else:
+            url = f"https://ege.fipi.ru/bank/{url}"
 
     filename = _url_to_filename(url)
     local_path = MEDIA_DIR / filename
@@ -113,7 +127,12 @@ def download_task_images_async(images: list[str]) -> list[str]:
         if url.startswith("/"):
             url = f"https://ege.fipi.ru{url}"
         elif not url.startswith("http"):
-            url = f"https://ege.fipi.ru/bank/{url}"
+            m = _BARE_GUID_RE.search(url)
+            if m:
+                guid = m.group(1)
+                url = f"https://ege.fipi.ru/docs/{FIPI_PROJECT_ID}/docs/{guid}/{url}"
+            else:
+                url = f"https://ege.fipi.ru/bank/{url}"
 
         filename = _url_to_filename(url)
         local_path = MEDIA_DIR / filename

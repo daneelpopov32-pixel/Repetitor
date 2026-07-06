@@ -37,6 +37,7 @@ def _get_task_description(text: str) -> str:
         "\nА)", "\nа)", "\n1)", "\nСОБЫТИЯ", "\nПРОЦЕССЫ", "\nГОДЫ",
         "\nУЧАСТНИКИ", "\nФАКТЫ", "\nПАМЯТНИКИ", "\nДЕЯТЕЛИ",
         "\nГОСУДАРСТВЕННЫЕ ДЕЯТЕЛИ", "\nПропущенные элементы",
+        "\nХАРАКТЕРИСТИКИ",
     ]:
         idx = text.find(marker)
         if idx > 0:
@@ -74,11 +75,10 @@ _TYPE4_TABLE = re.compile(
     re.IGNORECASE
 )
 
-# Type 5: matching, header "ГОСУДАРСТВЕННЫЕ ДЕЯТЕЛИ" or "ДЕЯТЕЛИ"
+# Type 5: matching, header "ГОСУДАРСТВЕННЫЕ ДЕЯТЕЛИ", "ДЕЯТЕЛИ", or "УЧАСТНИКИ"
 _TYPE5_FIGURES = re.compile(
-    r'(?:ГОСУДАРСТВЕННЫЕ\s+ДЕЯТЕЛИ|ДЕЯТЕЛИ\s*$|'
-    r'ДЕЯТЕЛИ\s*\([\w,\s]+\))',
-    re.MULTILINE | re.IGNORECASE
+    r'(?:ГОСУДАРСТВЕННЫЕ\s+ДЕЯТЕЛИ|ДЕЯТЕЛИ\b|УЧАСТНИКИ)',
+    re.IGNORECASE
 )
 
 # Type 6: long quote + "выберите верные суждения" / "запишите цифры"
@@ -118,15 +118,23 @@ _TYPE9_12_MAP_INTRO = re.compile(
     r'(?:рассмотрите\s+(?:схему|карту)\s+и\s+выполните|'
     r'обозначен\w*\s+на\s+(?:схеме|карте)|'
     r'в\s+легенде\s+схемы|'
-    r'на\s+схеме\s+цифр)',
+    r'на\s+схеме|'
+    r'на\s+карт\w*|'
+    r'отражён\w*\s+на\s+схеме)',
     re.IGNORECASE
 )
 
-# Type 9: question about entire event/war
+# Type 9: question about general context of the map (ruler, period, event participants)
+# NOT about a specific numbered object — that's Type 10
 _TYPE9_WHOLE_EVENT = re.compile(
     r'(?:напишите\s+название\s+(?:войны|события)|'
     r'назовите\s+название\s+(?:войны|события)|'
-    r'какому\s+событию\s+посвящена\s+схема)',
+    r'какому\s+событию\s+посвящена\s+схема|'
+    r'укажите\s+правителя|'
+    r'назовите\s+правителя|'
+    r'кто\s+был\s+(?:правителем|царём|императором)|'
+    r'в\s+период\s+какого\s+события|'
+    r'участники\s+события)',
     re.IGNORECASE
 )
 
@@ -142,32 +150,40 @@ _TYPE10_NUMBERED = re.compile(
 
 # Type 11: map + text with blank (комбинация карта+текст)
 _TYPE11_MAP_TEXT = re.compile(
-    r'(?:используя\s+(?:схему|карту)\s*,?\s*укажите\s+пропущенное|'
-    r'заполните\s+пропуск\s+в\s+предложении.*(?:на\s+схеме|на\s+карте)|'
+    r'(?:используя\s+(?:схему|карт\w*)\s*,?\s*укажите\s+пропущенное|'
+    r'заполните\s+пропуск\s+в\s+предложении.*(?:на\s+схеме|на\s+карт\w*)|'
     r'напишите\s+название\s+города.*пропущено\s+в\s+тексте|'
-    r'прочтите\s+текст\s+о\s+событиях.*на\s+схеме)',
+    r'прочтите\s+текст\s+о\s+событиях.*на\s+схеме|'
+    r'пропущенное\s+в\s+тексте.*(?:используя|на\s+схеме)|'
+    r'дважды\s+пропущенное\s+в\s+тексте)',
     re.IGNORECASE
 )
 
 # Type 12: map + list of judgments (like Type 6 but about map)
-# ONLY "суждений" — not buildings/posters (those are Type 16)
+# ONLY "суждений/суждения" — not buildings/posters (those are Type 16)
 _TYPE12_MAP_JUDGMENTS = re.compile(
     r'(?:какие\s+из\s+представленн\w+\s+суждени|'
     r'какие\s+суждени|'
-    r'какие\s+из\s+перечисленн\w+\s+суждени)',
+    r'какие\s+из\s+перечисленн\w+\s+суждени|'
+    r'суждени\w*\s+относящ\w*\s+к\s+(?:схеме|карт\w*)|'
+    r'являются\s+верными\s*\?|'
+    r'являются\s+верными)',
     re.IGNORECASE
 )
 
 # Type 16: multiple images to choose from (buildings, posters, etc.)
 _TYPE16_MULTI_IMAGE = re.compile(
     r'(?:какие\s+из\s+представленн\w+\s+(?:зданий|сооружений|плакатов|афиш|памятников)|'
+    r'какой\s+из\s+представленн\w+\s+памятников|'
     r'укажите\s+афиши|'
     r'какие\s+здания|'
     r'какие\s+из\s+нижеперечисленн\w+)',
     re.IGNORECASE
 )
 
-# Type 13: source quote + question about source itself (attribution)
+# Type 13: source quote + FACTUAL question about the source itself (attribution)
+# "Укажите год", "Укажите фамилию", "кем был написан", "обстоятельства создания",
+# "к какому периоду относится", "назовите название", "определите автора"
 _TYPE13_ATTRIBUTION = re.compile(
     r'(?:автор\w*\s+этого|'
     r'кем\s+был\s+написан|'
@@ -175,16 +191,25 @@ _TYPE13_ATTRIBUTION = re.compile(
     r'к\s+какому\s+периоду\s+относится|'
     r'назовите\s+название\s+(?:сочинения|произведения|документа)|'
     r'определите\s+автор|'
-    r'установите\s+дату\s+создания)',
+    r'установите\s+дату\s+создания|'
+    r'укажите\s+год\b|'
+    r'укажите\s+фамилию|'
+    r'укажите\s+(?:историческ\w*\s+деятел|княз|император|цар|председател))',
     re.IGNORECASE
 )
 
-# Type 14: source quote + question about content inside source
+# Type 14: source quote + INTERPRETIVE question about content inside source
+# "В чём состоит правда", "как автор характеризует", "что имел в виду автор",
+# "с чем согласен/не согласен", "какие суждения верны"
 _TYPE14_CONTENT = re.compile(
-    r'(?:прочтите\s+отрывок\s+из\s+(?:воспоминаний|документа|письма|статьи)|'
+    r'(?:в\s+чём.*состоит\s+(?:правда|смысл|суть)|'
+    r'как\s+автор\w*.*(?:характеризует|оценивает|описывает)|'
+    r'что\s+имел\w*\s+в\s+виду\s+автор|'
     r'с\s+чем\s+согласен|'
-    r'что\s+имел\s+в\s+виду\s+автор|'
-    r'какие\s+из\s+перечисленн\w+\s+событ\w*\s+относятся)',
+    r'какие\s+из\s+перечисленн\w+\s+событ\w*\s+относятся|'
+    r'какие\s+из\s+представленн\w+\s+суждени|'
+    r'какие\s+отрицательн\w*\s+последстви|'
+    r'как\w*\s+автор\w*\s+(?:считает|полагает|утверждает))',
     re.IGNORECASE
 )
 
@@ -273,8 +298,8 @@ def classify_task(subtype: str, text: str = "", text_content: dict = None) -> tu
         if _TYPE4_TABLE.search(text):
             return 4, "П"
 
-        # Type 5: header "ДЕЯТЕЛИ"
-        if _TYPE5_FIGURES.search(desc):
+        # Type 5: header "ДЕЯТЕЛИ" / "УЧАСТНИКИ" — check full text (desc may be truncated)
+        if _TYPE5_FIGURES.search(text):
             return 5, "Б"
 
         # Type 7: header "ПАМЯТНИКИ КУЛЬТУРЫ"
@@ -306,8 +331,9 @@ def classify_task(subtype: str, text: str = "", text_content: dict = None) -> tu
     # Type 6 is NOT short_answer — it's separate format
     # ══════════════════════════════════════════════════════════════════
     if subtype == "short_answer":
-        # Type 8: image + WWII (STRICT: must have both)
-        if has_img and _WWII_MARKERS.search(text):
+        # Type 8: image + intro "Рассмотрите изображение и выполните задание"
+        # If also has WWII markers → definitely 8. Without WWII → still 8 if image present
+        if has_img and _TYPE8_INTRO.search(text):
             return 8, "Б"
 
         # Types 9-12: require image + map intro, OR strong text marker
@@ -371,6 +397,12 @@ def classify_task(subtype: str, text: str = "", text_content: dict = None) -> tu
         if _TYPE20_COMPARISON.search(text):
             return 20, "В"
 
+        # Type 15/16: image analysis (BEFORE attribution — image tasks take priority)
+        if has_img:
+            if _TYPE16_MULTI_IMAGE.search(text):
+                return 16, "П"
+            return 15, "П"
+
         # Type 13: source attribution
         if _TYPE13_ATTRIBUTION.search(text):
             return 13, "П"
@@ -383,18 +415,8 @@ def classify_task(subtype: str, text: str = "", text_content: dict = None) -> tu
         if _TYPE6_SOURCE.search(text):
             return 6, "П"
 
-        # Type 15/16: image analysis (require image)
-        if has_img:
-            if _TYPE16_MULTI_IMAGE.search(text):
-                return 16, "П"
-            return 15, "П"
-
-        # Type 14: source content extraction
+        # Type 14: source content extraction (interpretive questions)
         if _TYPE14_CONTENT.search(text):
-            return 14, "Б"
-
-        # Type 14 fallback: essays with "прочтите отрывок"
-        if re.search(r'прочтите\s+отрывок', text, re.IGNORECASE):
             return 14, "Б"
 
         # No structural marker → honest None

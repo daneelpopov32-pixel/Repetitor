@@ -381,6 +381,10 @@ def _extract_tasks_from_html(html):
     soup = BeautifulSoup(html, "html.parser")
     qblocks = soup.find_all("div", class_="qblock")
     tasks = []
+
+    # Accumulate images from ALL standalone blocks on this page.
+    # Tasks without own images inherit the full accumulated set.
+    shared_images = []
     for qb in qblocks:
         task = {"block_id": qb.get("id", "").replace("q", "")}
         hint = qb.find("div", class_="hint")
@@ -388,6 +392,9 @@ def _extract_tasks_from_html(html):
             task["hint"] = hint.get_text(strip=True)
         form = qb.find("form", id=lambda x: x and x.startswith("checkform"))
         if not form:
+            # Standalone image block: collect its images
+            pics = re.findall(r"ShowPicture\w*\('([^']+)'\)", str(qb))
+            shared_images.extend(pics)
             continue
         guid_input = form.find("input", {"name": "guid"})
         if not guid_input:
@@ -403,6 +410,11 @@ def _extract_tasks_from_html(html):
         # Also extract from ShowPicture/ShowPictureQ() calls in the full qblock HTML
         js_images = re.findall(r"ShowPicture\w*\('([^']+)'\)", str(qb))
         images.extend(js_images)
+
+        # If task has no own images, inherit all accumulated shared images
+        if not images and shared_images:
+            images = list(shared_images)
+
         # Convert relative paths to absolute URLs
         resolved_images = []
         for img in images:
@@ -672,7 +684,7 @@ def sync_subject_full(self, subject_name="История"):
             "total": len(theme_codes),
             "theme": code,
         })
-        result = sync_theme_full(code)
+        result = _sync_theme_core(code)
         results[code] = result
 
     total_added = sum(r.get("added_new", 0) for r in results.values() if isinstance(r, dict))
