@@ -131,7 +131,7 @@ def download_task_images_async(images: list[str]) -> list[str]:
             return None
         if url.startswith("/"):
             url = f"https://ege.fipi.ru{url}"
-        el        if not url.startswith("http"):
+        elif not url.startswith("http"):
             m = _BARE_DOC_GUID_RE.search(url)
             if m:
                 guid = m.group(1)

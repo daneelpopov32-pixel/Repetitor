@@ -378,24 +378,44 @@ def _extract_sequence_items(text):
 
 
 def _extract_tasks_from_html(html):
+    """Extract tasks from FIPI HTML with stateful image binding.
+
+    Uses a stateful pass through qblocks to correctly bind images:
+    - ShowPicture() in standalone blocks = context image (carries forward)
+    - ShowPictureQ() in task blocks = task's own image
+
+    Three scenarios:
+    1. Own image only (no context active)
+    2. Inherited context image only (no own image)
+    3. Context + own image (both present, context first)
+    """
     soup = BeautifulSoup(html, "html.parser")
     qblocks = soup.find_all("div", class_="qblock")
     tasks = []
 
-    # Accumulate images from ALL standalone blocks on this page.
-    # Tasks without own images inherit the full accumulated set.
-    shared_images = []
+    # Stateful: current active context image from a standalone block
+    # Persists across tasks until overwritten by a new standalone block
+    active_context_image = None
+
     for qb in qblocks:
         task = {"block_id": qb.get("id", "").replace("q", "")}
         hint = qb.find("div", class_="hint")
         if hint:
             task["hint"] = hint.get_text(strip=True)
         form = qb.find("form", id=lambda x: x and x.startswith("checkform"))
+
         if not form:
-            # Standalone image block: collect its images
-            pics = re.findall(r"ShowPicture\w*\('([^']+)'\)", str(qb))
-            shared_images.extend(pics)
+            # Standalone block: may contain context image via ShowPicture()
+            pics = re.findall(r"ShowPicture\('([^']+)'\)", str(qb))
+            if pics:
+                active_context_image = _resolve_image_url(pics[0])
+            # Also check for <img> tags in standalone blocks
+            img_tags = [img.get("src", "") for img in qb.find_all("img") if img.get("src")]
+            if img_tags and not pics:
+                active_context_image = _resolve_image_url(img_tags[0])
             continue
+
+        # Task block (has form with guid)
         guid_input = form.find("input", {"name": "guid"})
         if not guid_input:
             continue
@@ -405,40 +425,37 @@ def _extract_tasks_from_html(html):
         if not cell:
             continue
 
-        # Extract images from <img> tags AND ShowPicture/ShowPictureQ() JavaScript calls
-        images = [img.get("src", "") for img in cell.find_all("img") if img.get("src")]
-        # Also extract from ShowPicture/ShowPictureQ() calls in the full qblock HTML
-        js_images = re.findall(r"ShowPicture\w*\('([^']+)'\)", str(qb))
-        images.extend(js_images)
+        # Extract OWN images: only ShowPictureQ (task-specific)
+        # ShowPicture in task blocks is the same context image, not own
+        own_images = []
+        qb_str = str(qb)
+        for m in re.finditer(r"ShowPictureQ\w*\('([^']+)'\)", qb_str):
+            own_images.append(_resolve_image_url(m.group(1)))
 
-        # If task has no own images, inherit all accumulated shared images
-        if not images and shared_images:
-            images = list(shared_images)
+        # Also check <img> tags in cell (may exist alongside ShowPictureQ)
+        cell_imgs = [img.get("src", "") for img in cell.find_all("img") if img.get("src")]
+        for ci in cell_imgs:
+            resolved = _resolve_image_url(ci)
+            if resolved not in own_images:
+                own_images.append(resolved)
 
-        # Convert relative paths to absolute URLs
-        resolved_images = []
-        for img in images:
-            if img.startswith("../../"):
-                img = f"https://ege.fipi.ru/{img[6:]}"  # Remove ../../ and prepend base
-            elif img.startswith("docs/"):
-                img = f"https://ege.fipi.ru/{img}"
-            elif img.startswith("xs3docsrc"):
-                # Bare ShowPicture filename — construct URL with project_id and GUID
-                # Pattern: xs3docsrc{32-hex-guid}_{n}_{timestamp}.{ext}
-                import re as _re
-                m = _re.match(r"xs3docsrc([A-F0-9]{32})_\d+_\d+\.\w+", img, _re.IGNORECASE)
-                if m:
-                    guid = m.group(1)
-                    img = f"https://ege.fipi.ru/docs/{FIPI_PROJECT_ID}/docs/{guid}/{img}"
-            elif img.startswith("xs3qstsrc"):
-                # Bare ShowPictureQ filename — construct URL
-                import re as _re
-                m = _re.match(r"xs3qstsrc([A-F0-9]{32})_\d+_\d+\.\w+", img, _re.IGNORECASE)
-                if m:
-                    guid = m.group(1)
-                    img = f"https://ege.fipi.ru/docs/{FIPI_PROJECT_ID}/questions/{guid}(copy1)/{img}"
-            resolved_images.append(img)
-        task["images"] = resolved_images
+        # Apply three scenarios
+        if own_images and active_context_image:
+            # Scenario 3: context + own image
+            task["images"] = [active_context_image] + own_images
+            task["image_scenario"] = "context_and_own"
+        elif own_images:
+            # Scenario 1: own image only
+            task["images"] = own_images
+            task["image_scenario"] = "own_only"
+        elif active_context_image:
+            # Scenario 2: inherited context image
+            task["images"] = [active_context_image]
+            task["image_scenario"] = "inherited_context"
+        else:
+            # No images at all
+            task["images"] = []
+            task["image_scenario"] = "none"
 
         # Clean text FIRST — remove UI elements before type detection
         task["text"] = _clean_cell_text(cell)
@@ -452,26 +469,19 @@ def _extract_tasks_from_html(html):
         if subtype == "matching":
             left_items, right_items = _extract_matching_pairs(cell)
             if left_items and right_items:
-                # Clean stem text (remove column headers)
                 for item in left_items:
                     item["text"] = _clean_stem_text(item["text"])
                 for item in right_items:
                     item["text"] = _clean_stem_text(item["text"])
-
                 task["matching_left"] = left_items
                 task["matching_right"] = right_items
                 task["answers_per_stem"] = _detect_answers_per_stem(task["text"])
-                # Build options: for each left stem, offer all right column items
                 task["options"] = [[{"value": item["label"], "text": item["text"]} for item in right_items]]
 
         elif subtype == "sequence":
             seq_items = _extract_sequence_items(task["text"])
             if seq_items:
                 task["sequence_items"] = seq_items
-                # The correct answer for a sequence is the permutation of positions
-                # in correct order. We store the items as-is; the answer key
-                # will be filled when the tutor reviews or from answer data.
-                # For now, store the detected items as structured data.
                 task["correct_answer_key"] = {
                     "type": "sequence",
                     "item_count": len(seq_items),
@@ -483,6 +493,27 @@ def _extract_tasks_from_html(html):
 
         tasks.append(task)
     return tasks
+
+
+def _resolve_image_url(img: str) -> str:
+    """Resolve an image path to a full HTTPS URL."""
+    if img.startswith("../../"):
+        img = f"https://ege.fipi.ru/{img[6:]}"
+    elif img.startswith("docs/"):
+        img = f"https://ege.fipi.ru/{img}"
+    elif img.startswith("xs3docsrc"):
+        m = re.match(r"xs3docsrc([A-F0-9]{32})_\d+_\d+\.\w+", img, re.IGNORECASE)
+        if m:
+            guid = m.group(1)
+            img = f"https://ege.fipi.ru/docs/{FIPI_PROJECT_ID}/docs/{guid}/{img}"
+    elif img.startswith("xs3qstsrc"):
+        m = re.match(r"xs3qstsrc([A-F0-9]{32})_\d+_\d+\.\w+", img, re.IGNORECASE)
+        if m:
+            guid = m.group(1)
+            img = f"https://ege.fipi.ru/docs/{FIPI_PROJECT_ID}/questions/{guid}(copy1)/{img}"
+    elif not img.startswith("http"):
+        img = f"https://ege.fipi.ru/bank/{img}"
+    return img
 
 
 def _build_text_content(task_data):
@@ -705,11 +736,22 @@ def sync_subject_full(self, subject_name="История"):
     total_added = sum(r.get("added_new", 0) for r in results.values() if isinstance(r, dict))
     total_fetched = sum(r.get("fetched_from_fipi", 0) for r in results.values() if isinstance(r, dict))
 
+    # After all themes synced, run image sync from full list once
+    # (FIPI blocks images when theme=X. is used, so full list is required)
+    self.update_state(state="PROGRESS", meta={
+        "status": "Синхронизация изображений из полного списка...",
+    })
+    try:
+        img_result = _sync_images_from_full_list(max_pages=200)
+    except Exception as e:
+        img_result = {"error": str(e)}
+
     return {
         "subject": subject_name,
         "themes_processed": len(theme_codes),
         "total_fetched": total_fetched,
         "total_added": total_added,
+        "images_sync": img_result,
         "per_theme": results,
     }
 
