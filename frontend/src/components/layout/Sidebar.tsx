@@ -13,7 +13,6 @@ const TUTOR_LINKS = [
 
 const STUDENT_LINKS = [
   { href: "/dashboard", icon: "📊", label: "Главная" },
-  { href: "/tests", icon: "📋", label: "Мои тесты" },
 ];
 
 export default function Sidebar() {

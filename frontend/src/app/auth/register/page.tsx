@@ -35,6 +35,7 @@ export default function RegisterPage() {
         birth_date: form.birth_date || null,
         role: form.role,
         invitation_code: form.role === "STUDENT" ? form.invitation_code : undefined,
+        consent_152fz: form.consent,
       });
       setAuth({ token: res.access_token, userId: res.user_id, role: res.role, email: form.email });
       router.push("/dashboard");

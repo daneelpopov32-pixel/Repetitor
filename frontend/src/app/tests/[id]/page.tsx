@@ -44,6 +44,8 @@ export default function TestDetailPage() {
   const deleteTest = async () => { if (!confirm("Удалить тест?")) return; try { await api.deleteTest(testId as string, auth.token!); router.push("/tests"); } catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); } };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const removeTask = async (tid: string) => { if (!confirm("Удалить задание?")) return; try { await api.removeTaskFromTest(testId as string, tid, auth.token!); setTest((p: any) => ({ ...p, tasks: p.tasks.filter((t: any) => t.task_id !== tid) })); } catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); } };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const replaceTask = async (tid: string, newType: string) => { if (!confirm("Заменить задание?")) return; try { await api.replaceTask(testId as string, tid, newType, auth.token!); api.getTest(testId as string, auth.token!).then(setTest); } catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); } };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getText = (t: any): string => { const tc = t.text_content; return typeof tc === "object" && tc?.text ? tc.text : tc || ""; };
@@ -145,7 +147,8 @@ export default function TestDetailPage() {
                 </div>
               )}
               {renderContent(currentTask, true)}
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1rem", paddingTop: "0.75rem", borderTop: "1px solid var(--c-border)" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1rem", paddingTop: "0.75rem", borderTop: "1px solid var(--c-border)" }}>
+                <Button variant="ghost" size="sm" onClick={() => replaceTask(currentTask.task_id, currentTask.type)}>Заменить</Button>
                 <Button variant="ghost" size="sm" onClick={() => removeTask(currentTask.task_id)}>Удалить задание</Button>
               </div>
             </Card>
@@ -176,7 +179,8 @@ export default function TestDetailPage() {
                       {exp && (
                         <motion.div {...expand}>
                           {renderContent(task, true)}
-                          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid var(--c-border)" }}>
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid var(--c-border)" }}>
+                            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); replaceTask(task.task_id, task.type); }}>Заменить</Button>
                             <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); removeTask(task.task_id); }}>Удалить</Button>
                           </div>
                         </motion.div>

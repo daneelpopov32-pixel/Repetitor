@@ -43,7 +43,7 @@ export default function ReviewPage() {
 
   const submitGrade = async () => {
     if (!selected) return;
-    try { await api.gradeAnswer(selected.id, scores, comment, auth.token!); setSelected(null); setAiResult(null); setScores({}); setComment(""); api.getReviewQueue(auth.token!).then(setQueue); } catch {}
+    try { await api.gradeAnswer(selected.answer_id, scores, comment, auth.token!); setSelected(null); setAiResult(null); setScores({}); setComment(""); api.getReviewQueue(auth.token!).then(setQueue); } catch {}
   };
 
   return (

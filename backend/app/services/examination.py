@@ -118,6 +118,12 @@ async def get_attempt_tasks(db: AsyncSession, attempt_id: UUID) -> dict:
         )
         theme_map = {t.id: t.name for t in themes_result.scalars().all()}
 
+    # Get existing answers for this attempt
+    answers_result = await db.execute(
+        select(Answer).where(Answer.attempt_id == attempt_id)
+    )
+    answers_map = {str(a.task_id): a for a in answers_result.scalars().all()}
+
     return {
         "attempt_id": attempt.id,
         "tasks": [
@@ -130,6 +136,7 @@ async def get_attempt_tasks(db: AsyncSession, attempt_id: UUID) -> dict:
                 "difficulty_level": tt.task.difficulty_level,
                 "block_id": (tt.task.metadata_ or {}).get("fipi_guid", ""),
                 "theme_name": theme_map.get(tt.task.theme_id, ""),
+                "student_input": answers_map.get(str(tt.task.id), Answer()).student_input if str(tt.task.id) in answers_map else None,
             }
             for tt in items
         ],

@@ -422,6 +422,21 @@ def _extract_tasks_from_html(html):
                 img = f"https://ege.fipi.ru/{img[6:]}"  # Remove ../../ and prepend base
             elif img.startswith("docs/"):
                 img = f"https://ege.fipi.ru/{img}"
+            elif img.startswith("xs3docsrc"):
+                # Bare ShowPicture filename — construct URL with project_id and GUID
+                # Pattern: xs3docsrc{32-hex-guid}_{n}_{timestamp}.{ext}
+                import re as _re
+                m = _re.match(r"xs3docsrc([A-F0-9]{32})_\d+_\d+\.\w+", img, _re.IGNORECASE)
+                if m:
+                    guid = m.group(1)
+                    img = f"https://ege.fipi.ru/docs/{FIPI_PROJECT_ID}/docs/{guid}/{img}"
+            elif img.startswith("xs3qstsrc"):
+                # Bare ShowPictureQ filename — construct URL
+                import re as _re
+                m = _re.match(r"xs3qstsrc([A-F0-9]{32})_\d+_\d+\.\w+", img, _re.IGNORECASE)
+                if m:
+                    guid = m.group(1)
+                    img = f"https://ege.fipi.ru/docs/{FIPI_PROJECT_ID}/questions/{guid}(copy1)/{img}"
             resolved_images.append(img)
         task["images"] = resolved_images
 
@@ -782,3 +797,126 @@ def create_test_from_fipi(self, tutor_id, title, theme_codes, count_per_theme, t
         return result
     finally:
         db.close()
+
+
+def _sync_images_from_full_list(max_pages=200):
+    """Sync images by iterating through FIPI full list (no theme filter).
+
+    FIPI blocks ShowPicture/ShowPictureQ when theme=X. is used.
+    This function fetches the full list (pagesize=10, no theme filter)
+    to get images, then matches by GUID to existing tasks in DB.
+
+    Returns: {pages_scanned, tasks_with_images, images_downloaded, updated}
+    """
+    import time
+    from app.models import Task
+    from app.services.image_downloader import download_task_images
+
+    db = _get_sync_session()
+    try:
+        # Build GUID → task mapping for all existing tasks
+        all_tasks = db.query(Task).filter(Task.metadata_["fipi_guid"].isnot(None)).all()
+        guid_to_task = {}
+        for t in all_tasks:
+            guid = (t.metadata_ or {}).get("fipi_guid")
+            if guid:
+                guid_to_task[guid.upper()] = t
+
+        logger.info("Found %d tasks with GUIDs in DB", len(guid_to_task))
+
+        pages_scanned = 0
+        tasks_with_images = 0
+        images_downloaded = 0
+        updated = 0
+
+        with httpx.Client(timeout=30, follow_redirects=True, verify=False) as client:
+            page = 1
+            consecutive_empty = 0
+
+            while page <= max_pages:
+                resp = client.post(
+                    f"{BASE_URL}/questions.php",
+                    data={
+                        "search": "1",
+                        "pagesize": "10",
+                        "proj": FIPI_PROJECT_ID,
+                        # NO theme parameter — this is the key difference
+                        "page": str(page),
+                    },
+                    headers=HEADERS,
+                )
+                html = resp.content.decode("windows-1251", errors="replace")
+                page_tasks = _extract_tasks_from_html(html)
+
+                if not page_tasks:
+                    consecutive_empty += 1
+                    if consecutive_empty >= 3:
+                        break  # 3 empty pages in a row = end of list
+                    page += 1
+                    time.sleep(0.5)
+                    continue
+
+                consecutive_empty = 0
+                pages_scanned += 1
+
+                for task_data in page_tasks:
+                    guid = task_data.get("guid", "").upper()
+                    if not guid:
+                        continue
+
+                    images = task_data.get("images", [])
+                    if not images:
+                        continue
+
+                    tasks_with_images += 1
+
+                    # Find matching task in DB
+                    db_task = guid_to_task.get(guid)
+                    if not db_task:
+                        continue
+
+                    # Check if task already has images
+                    existing_images = (db_task.text_content or {}).get("images", [])
+                    if existing_images and any(p for p in existing_images if p):
+                        continue  # Already has images, skip
+
+                    # Download images
+                    local_paths = download_task_images(images)
+                    if not local_paths or not any(local_paths):
+                        continue
+
+                    # Update task's text_content
+                    text_content = dict(db_task.text_content or {})
+                    text_content["images"] = local_paths
+                    db_task.text_content = text_content
+                    images_downloaded += sum(1 for p in local_paths if p)
+                    updated += 1
+
+                if pages_scanned % 20 == 0:
+                    logger.info("Image sync: scanned %d pages, updated %d tasks", pages_scanned, updated)
+
+                page += 1
+                time.sleep(0.5)  # polite delay
+
+        db.commit()
+
+        result = {
+            "pages_scanned": pages_scanned,
+            "tasks_with_images": tasks_with_images,
+            "images_downloaded": images_downloaded,
+            "updated": updated,
+        }
+        logger.info("Image sync complete: %s", result)
+        return result
+
+    finally:
+        db.close()
+
+
+@celery_app.task(bind=True, name="sync_images_full_list")
+def sync_images_full_list(self, max_pages=200):
+    """Celery wrapper for image sync from full list."""
+    self.update_state(state="PROGRESS", meta={
+        "status": "Синхронизация изображений из полного списка...",
+    })
+    return _sync_images_from_full_list(max_pages)

@@ -28,8 +28,10 @@ function TutorDashboard({ token }: { token: string }) {
   }, [token]);
 
   const generateCode = async () => {
-    const res = await api.generateInvitationCode(30, token);
-    setInviteCode(res.code);
+    try {
+      const res = await api.generateInvitationCode(30, token);
+      setInviteCode(res.code);
+    } catch {}
   };
 
   if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: "3rem" }}><Spinner size="lg" /></div>;
@@ -134,8 +136,8 @@ function StudentDashboard({ token }: { token: string }) {
       ) : (
         <motion.div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }} {...stagger}>
           {tests.map((t: Record<string, unknown>, idx: number) => {
-            const status = t.status as string;
-            const score = t.score as number | null;
+            const status = (t.attempt_status as string) || (t.assignment_status as string) || "ASSIGNED";
+            const hasAttempt = !!t.attempt_id;
             return (
               <motion.div key={String(t.test_id || idx)} {...slideUp}>
                 <Card hover onClick={status !== "COMPLETED" ? () => startTest(t.test_id as string) : undefined}>
@@ -143,19 +145,17 @@ function StudentDashboard({ token }: { token: string }) {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>{String(t.title || "Тест")}</div>
                       <div style={{ fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>
-                        {String(t.task_count || 0)} заданий{t.time_limit ? ` • ${t.time_limit} мин` : ""}
+                        {String(t.tasks_count || 0)} заданий{t.time_limit_minutes ? ` • ${t.time_limit_minutes} мин` : ""}
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                      {score !== null && score !== undefined && (
-                        <span style={{ fontWeight: 600, fontSize: "var(--text-lg)" }}>{String(score)}%</span>
-                      )}
                       <Badge variant={
                         status === "COMPLETED" ? "success" :
                         status === "IN_PROGRESS" ? "warning" : "info"
                       }>
                         {status === "COMPLETED" ? "Пройден" :
-                         status === "IN_PROGRESS" ? "В процессе" : "Начать"}
+                         status === "IN_PROGRESS" ? "В процессе" :
+                         hasAttempt ? "Начать заново" : "Начать"}
                       </Badge>
                     </div>
                   </div>

@@ -111,6 +111,21 @@ async def generate_ege(
     return result
 
 
+@router.post("/sync-images")
+async def sync_images(
+    user: User = Depends(require_role("TUTOR")),
+):
+    """Sync images from FIPI full list (no theme filter required).
+
+    FIPI blocks ShowPicture/ShowPictureQ when theme=X. is used.
+    This endpoint iterates through the full list to get images
+    and matches them to existing tasks by GUID.
+    """
+    from app.tasks.fipi_tasks import sync_images_full_list
+    task = sync_images_full_list.delay()
+    return {"task_id": task.id, "status": "started"}
+
+
 @router.get("/task-status/{task_id}")
 async def task_status(
     task_id: str,

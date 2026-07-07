@@ -133,22 +133,23 @@ export default function TestsPage() {
         ) : (
           <motion.div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }} {...stagger}>
             {tests.map((t, idx) => {
-              const isExpanded = expandedTest === t.id;
-              const assigns = assignments[t.id] || [];
+              const testId = t.test_id;
+              const isExpanded = expandedTest === testId;
+              const assigns = assignments[testId] || [];
               return (
-                <motion.div key={String(t.id || idx)} {...slideUp}>
+                <motion.div key={String(testId || idx)} {...slideUp}>
                   <Card hover>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ flex: 1, cursor: "pointer" }} onClick={() => toggleExpand(t.id)}>
+                      <div style={{ flex: 1, cursor: "pointer" }} onClick={() => toggleExpand(testId)}>
                         <div style={{ fontWeight: 600, marginBottom: 2 }}>{t.title || "Без названия"}</div>
                         <div style={{ fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>
-                          {t.tasks_count || 0} заданий{t.time_limit ? ` • ${t.time_limit} мин` : ""} • {new Date(t.created_at).toLocaleDateString("ru-RU")}
+                          {t.tasks_count || 0} заданий{t.time_limit_minutes ? ` • ${t.time_limit_minutes} мин` : ""} • {new Date(t.created_at).toLocaleDateString("ru-RU")}
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: "0.5rem" }} onClick={(e) => e.stopPropagation()}>
-                        <Button variant="secondary" size="sm" onClick={() => router.push(`/tests/${t.id}`)}>Открыть</Button>
-                        <Button variant="secondary" size="sm" onClick={() => openAssign(t.id)}>Назначить</Button>
-                        <Button variant="ghost" size="sm" onClick={() => setDeleteId(t.id)}>🗑</Button>
+                        <Button variant="secondary" size="sm" onClick={() => router.push(`/tests/${testId}`)}>Открыть</Button>
+                        <Button variant="secondary" size="sm" onClick={() => openAssign(testId)}>Назначить</Button>
+                        <Button variant="ghost" size="sm" onClick={() => setDeleteId(testId)}>🗑</Button>
                       </div>
                     </div>
                     <AnimatePresence>
@@ -168,8 +169,8 @@ export default function TestsPage() {
                                       <Badge variant={st.variant}>{st.label}</Badge>
                                       {score !== null && score !== undefined && <span style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{score}%</span>}
                                       <div style={{ width: 80 }}><ProgressBar value={score || 0} /></div>
-                                      <Button variant="ghost" size="sm" onClick={() => viewAnswers(t.id, a.student_id as string, a.student_name as string)}>Ответы</Button>
-                                      <Button variant="ghost" size="sm" onClick={() => doUnassign(t.id, a.student_id as string)}>✕</Button>
+                      <Button variant="ghost" size="sm" onClick={() => viewAnswers(testId, a.student_id as string, a.student_name as string)}>Ответы</Button>
+                                       <Button variant="ghost" size="sm" onClick={() => doUnassign(testId, a.student_id as string)}>✕</Button>
                                     </div>
                                   );
                                 })}

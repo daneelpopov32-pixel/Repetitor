@@ -6,9 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import Subject, Theme, Task, User
 from app.schemas.content import (
-    TaskImportRequest, TaskImportResponse,
     BulkImportRequest, BulkImportResponse,
-    SubjectCreate, ThemeCreate,
+    SubjectCreate,
 )
 from app.services import content_parser
 from app.services.content import get_theme_tree, get_subjects
@@ -37,46 +36,6 @@ async def create_subject(
 @router.get("/themes/tree")
 async def theme_tree(subject_id: UUID, db: AsyncSession = Depends(get_db)):
     return await get_theme_tree(db, subject_id)
-
-
-@router.post("/themes")
-async def create_theme(
-    data: ThemeCreate,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_role("TUTOR")),
-):
-    theme = Theme(
-        subject_id=data.subject_id,
-        parent_theme_id=data.parent_theme_id,
-        fipi_code=data.fipi_code,
-        name=data.name,
-    )
-    db.add(theme)
-    await db.commit()
-    return {"id": theme.id, "name": theme.name, "fipi_code": theme.fipi_code}
-
-
-@router.post("/tasks/import", response_model=TaskImportResponse)
-async def import_single_task(
-    data: TaskImportRequest,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_role("TUTOR")),
-):
-    try:
-        return await content_parser.import_task(
-            db,
-            subject_id=data.subject_id,
-            theme_id=data.theme_id,
-            task_type=data.type,
-            text_content=data.text_content,
-            correct_answer_key=data.correct_answer_key,
-            fipi_criteria=data.fipi_criteria,
-            source_url=data.source_url,
-            exam_position=data.exam_position,
-            difficulty_level=data.difficulty_level,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/tasks/bulk-import", response_model=BulkImportResponse)
@@ -130,6 +89,8 @@ async def list_tasks(
                 "theme_id": str(t.theme_id),
                 "text_preview": t.text_content.get("text", "")[:100] if isinstance(t.text_content, dict) else str(t.text_content)[:100],
                 "source_url": t.source_url,
+                "exam_position": t.exam_position,
+                "difficulty_level": t.difficulty_level,
             }
             for t in tasks
         ],

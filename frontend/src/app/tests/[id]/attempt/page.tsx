@@ -46,7 +46,7 @@ export default function AttemptPage() {
       const taskData = await api.getAttemptTasks(attemptId as string, auth.token!);
       setTasks(taskData.tasks || []);
       const ea: Record<string, string> = {};
-      for (const t of taskData.tasks || []) { if (t.text_content?.student_input) ea[t.task_id] = t.text_content.student_input; }
+      for (const t of taskData.tasks || []) { if (t.student_input) ea[t.task_id] = t.student_input; }
       setAnswers(ea);
       if (att.time_limit_minutes && att.started_at) {
         const left = Math.max(0, Math.floor(((new Date(att.server_time).getTime() - new Date(att.started_at).getTime()) * -1 + att.time_limit_minutes * 60000) / 1000));

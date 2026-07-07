@@ -18,7 +18,7 @@ import EmptyState from "@/components/ui/EmptyState";
 
 interface ThemeNode { id: string; name: string; fipi_code?: string; children: ThemeNode[]; }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-interface Task { id: string; type: string; theme_id: string; text_content: any; exam_position?: number; difficulty_level?: string; }
+interface Task { id: string; type: string; theme_id: string; text_preview: string; exam_position?: number; difficulty_level?: string; }
 
 export default function ContentPage() {
   const { auth, hydrated, logout } = useAuth();
@@ -37,6 +37,8 @@ export default function ContentPage() {
   const [filterType, setFilterType] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [syncStatus, setSyncStatus] = useState<Record<string, unknown>[] | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -80,6 +82,16 @@ export default function ContentPage() {
   const syncAction = async (fn: () => Promise<unknown>, msg: string) => {
     try { const res = await fn(); setSuccess(`${msg} (задача: ${(res as Record<string, string>).task_id?.slice(0, 8)}...)`); }
     catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); }
+  };
+
+  const loadSyncStatus = async () => {
+    if (!auth.token) return;
+    setSyncLoading(true);
+    try {
+      const data = await api.getSyncStatus(auth.token);
+      setSyncStatus(data);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка загрузки статуса"); }
+    setSyncLoading(false);
   };
 
   const renderThemeTree = (nodes: ThemeNode[], depth = 0): React.ReactNode =>
@@ -130,11 +142,38 @@ export default function ContentPage() {
             <Button variant="success" size="sm" onClick={() => syncAction(() => api.syncCodifier("История", auth.token!), "Кодификатор синхронизирован")}>⟳ Кодификатор</Button>
             <Button variant="secondary" size="sm" onClick={() => { const c = prompt("Код темы (напр. 8.):"); if (c) syncAction(() => api.syncTheme(c, auth.token!), `Тема ${c} синхронизирована`); }}>⟳ Тему</Button>
             <Button variant="secondary" size="sm" onClick={() => { if (confirm("Синхронизировать весь предмет?")) syncAction(() => api.syncSubject("История", auth.token!), "Предмет синхронизирован"); }}>⟳ Весь предмет</Button>
+            <Button variant="secondary" size="sm" onClick={() => { if (confirm("Синхронизировать изображения из полного списка FIPI? Это займёт время.")) syncAction(() => api.syncImages(auth.token!), "Синхронизация изображений запущена"); }}>🖼 Изображения</Button>
           </div>
         }
       >
         {error && <div style={{ padding: "0.75rem 1rem", background: "var(--c-danger-bg)", border: "1px solid #fecaca", borderRadius: "var(--r-md)", color: "var(--c-danger)", marginBottom: "1rem", display: "flex", justifyContent: "space-between" }}><span>{error}</span><button onClick={() => setError("")} style={{ background: "none", border: "none", cursor: "pointer" }}>✕</button></div>}
         {success && <div style={{ padding: "0.75rem 1rem", background: "var(--c-success-bg)", border: "1px solid #bbf7d0", borderRadius: "var(--r-md)", color: "#166534", marginBottom: "1rem" }}>{success}</div>}
+
+        {/* Sync Status */}
+        <Card style={{ marginBottom: "1rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: syncStatus ? "0.75rem" : 0 }}>
+            <h3 style={{ fontSize: "var(--text-lg)", fontWeight: 600 }}>Статус синхронизации</h3>
+            <Button variant="ghost" size="sm" onClick={loadSyncStatus} loading={syncLoading}>
+              {syncStatus ? "Обновить" : "Показать"}
+            </Button>
+          </div>
+          {syncStatus && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              {syncStatus.map((subject: Record<string, unknown>) => (
+                <div key={String(subject.subject_id)}>
+                  <div style={{ fontWeight: 600, fontSize: "var(--text-sm)", marginBottom: 4 }}>{String(subject.subject_name)}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {(subject.themes as Array<Record<string, unknown>> || []).map((theme) => (
+                      <Badge key={String(theme.theme_id)} variant={(theme.task_count as number) > 0 ? "success" : "default"}>
+                        {String(theme.fipi_code)} {String(theme.task_count)} зад.
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
 
         {subjects.length === 0 && !showAddSubject ? (
           <EmptyState icon="📚" title="Нет предметов" text="Добавьте предмет, чтобы начать" action={<Button onClick={() => setShowAddSubject(true)}>Добавить предмет</Button>} />
@@ -200,7 +239,7 @@ export default function ContentPage() {
                             <Badge variant={t.type === "TEST" ? "info" : "warning"}>{t.type === "TEST" ? "Т" : "Э"}</Badge>
                             {t.exam_position && <Badge variant="default">Тип {t.exam_position}</Badge>}
                             <span className="truncate" style={{ flex: 1, color: "var(--c-text-secondary)" }}>
-                              {(t.text_content?.text || "").slice(0, 100)}
+                              {(t.text_preview || "").slice(0, 100)}
                             </span>
                           </div>
                         ))}

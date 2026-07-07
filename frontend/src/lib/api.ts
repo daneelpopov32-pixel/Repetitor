@@ -109,18 +109,6 @@ export const api = {
       body: JSON.stringify({ name }),
       token,
     }),
-  createTheme: (data: { subject_id: string; parent_theme_id?: string; fipi_code?: string; name: string }, token: string) =>
-    request<any>("/content/themes", {
-      method: "POST",
-      body: JSON.stringify(data),
-      token,
-    }),
-  importTask: (data: any, token: string) =>
-    request<any>("/content/tasks/import", {
-      method: "POST",
-      body: JSON.stringify(data),
-      token,
-    }),
   listTasks: (params: { subject_id?: string; theme_id?: string; task_type?: string }, token: string) => {
     const q = new URLSearchParams();
     if (params.subject_id) q.set("subject_id", params.subject_id);
@@ -150,6 +138,11 @@ export const api = {
     }),
   getSyncStatus: (token: string) =>
     request<any[]>("/fipi/sync-status", { token }),
+  syncImages: (token: string) =>
+    request<any>("/fipi/sync-images", {
+      method: "POST",
+      token,
+    }),
   createTestAsync: (data: { title: string; theme_codes: string[]; count_per_theme: number; task_type: string; time_limit_minutes?: number; exam_positions?: number[] }, token: string) =>
     request<any>("/fipi/create-test", {
       method: "POST",
