@@ -3,7 +3,7 @@
 import { ButtonHTMLAttributes, forwardRef } from "react";
 import { motion } from "framer-motion";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "success";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "success" | "accent";
 type Size = "sm" | "md" | "lg";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -18,6 +18,7 @@ const variantClass: Record<Variant, string> = {
   ghost: "btn-ghost",
   danger: "btn-danger",
   success: "btn-success",
+  accent: "btn-accent",
 };
 
 const sizeClass: Record<Size, string> = {

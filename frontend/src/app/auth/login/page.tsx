@@ -64,7 +64,7 @@ export default function LoginPage() {
             required
           />
           {error && <div className="error-text">{error}</div>}
-          <Button type="submit" loading={loading} style={{ width: "100%", marginTop: "0.5rem" }}>
+          <Button type="submit" variant="accent" loading={loading} style={{ width: "100%", marginTop: "0.5rem" }}>
             Войти
           </Button>
         </form>

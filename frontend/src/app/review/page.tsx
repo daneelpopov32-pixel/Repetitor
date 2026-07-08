@@ -64,7 +64,7 @@ export default function ReviewPage() {
                     <Card
                       hover
                       onClick={() => { setSelected(item); setAiResult(null); setScores({}); setComment(""); }}
-                      style={{ border: selected?.answer_id === item.answer_id ? "2px solid var(--c-primary)" : undefined, cursor: "pointer" }}
+                      style={{ border: selected?.answer_id === item.answer_id ? "2px solid var(--c-accent)" : undefined, cursor: "pointer" }}
                     >
                       <div style={{ fontSize: "var(--text-xs)", color: "var(--c-text-secondary)", marginBottom: 4 }}>Попытка: {item.attempt_id.slice(0, 8)}...</div>
                       <div style={{ fontSize: "var(--text-sm)" }}>{item.student_input?.slice(0, 120)}...</div>
@@ -84,7 +84,7 @@ export default function ReviewPage() {
                   <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.6 }}>{selected.student_input}</p>
                 </Card>
 
-                <Button onClick={() => requestAi(selected.task_id, selected.student_input)} loading={loading}>
+                <Button variant="accent" onClick={() => requestAi(selected.task_id, selected.student_input)} loading={loading}>
                   {loading ? "AI анализирует..." : "Запросить AI-подсказку"}
                 </Button>
 
@@ -117,7 +117,7 @@ export default function ReviewPage() {
                     <label style={{ fontSize: "var(--text-sm)", fontWeight: 500, display: "block", marginBottom: 4 }}>Комментарий</label>
                     <textarea style={{ width: "100%", minHeight: 80, padding: "0.5rem", border: "1px solid var(--c-border)", borderRadius: "var(--r-md)", fontFamily: "var(--font)", fontSize: "var(--text-sm)", resize: "vertical" }} value={comment} onChange={(e) => setComment(e.target.value)} />
                   </div>
-                  <Button variant="success" onClick={submitGrade} style={{ marginTop: "1rem" }}>Сохранить оценку</Button>
+                  <Button variant="accent" onClick={submitGrade} style={{ marginTop: "1rem" }}>Сохранить оценку</Button>
                 </Card>
               </motion.div>
             ) : (

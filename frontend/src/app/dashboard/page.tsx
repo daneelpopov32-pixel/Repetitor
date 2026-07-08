@@ -46,7 +46,7 @@ function TutorDashboard({ token }: { token: string }) {
               {inviteCode}
             </code>
           )}
-          <Button variant="secondary" onClick={generateCode}>Пригласить ученика</Button>
+          <Button variant="accent" onClick={generateCode}>Пригласить ученика</Button>
         </div>
       }
     >

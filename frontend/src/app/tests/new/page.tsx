@@ -195,9 +195,9 @@ export default function NewTestPage() {
               {Array.from({ length: 21 }, (_, i) => i + 1).map((p) => (
                 <motion.button key={p} whileTap={{ scale: 0.9 }}
                   style={{ padding: "4px 8px", borderRadius: "var(--r-sm)", border: "1px solid", fontSize: "var(--text-xs)", fontWeight: 500, cursor: "pointer",
-                    background: selectedPositions.includes(p) ? "var(--c-primary)" : "var(--c-surface)",
+                    background: selectedPositions.includes(p) ? "var(--c-accent)" : "var(--c-surface)",
                     color: selectedPositions.includes(p) ? "white" : "var(--c-text)",
-                    borderColor: selectedPositions.includes(p) ? "var(--c-primary)" : "var(--c-border)" }}
+                    borderColor: selectedPositions.includes(p) ? "var(--c-accent)" : "var(--c-border)" }}
                   onClick={() => setSelectedPositions((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p])} disabled={creating}
                 >{p}</motion.button>
               ))}
@@ -231,18 +231,20 @@ export default function NewTestPage() {
 
           {/* Create button */}
           <div style={{ display: "flex", gap: "0.75rem" }}>
-            <Button onClick={handleCreate} disabled={!canCreate}>{creating ? "Создание..." : "Создать тест"}</Button>
+            <Button variant="accent" onClick={handleCreate} disabled={!canCreate}>{creating ? "Создание..." : "Создать тест"}</Button>
             <Button variant="secondary" onClick={() => router.back()} disabled={creating}>Отмена</Button>
           </div>
 
           {/* EGE Generator */}
-          <Card>
+          <div style={{ borderTop: "1px solid var(--c-border)", paddingTop: "1.5rem" }}>
+            <Card>
             <h3 style={{ fontSize: "var(--text-lg)", fontWeight: 600, marginBottom: "0.5rem" }}>Генератор варианта ЕГЭ</h3>
             <p style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)", marginBottom: "1rem" }}>Автоматически соберёт полный вариант из 21 задания (210 мин).</p>
             {egeResult && <div style={{ padding: "0.75rem", background: "var(--c-success-bg)", borderRadius: "var(--r-md)", color: "#166534", marginBottom: "1rem", fontSize: "var(--text-sm)" }}>Вариант: <strong>{egeResult.title}</strong> ({egeResult.tasks_count} заданий) <a href={`/tests/${egeResult.test_id}`}>Открыть →</a></div>}
             {egeError && <div style={{ padding: "0.75rem", background: "var(--c-danger-bg)", borderRadius: "var(--r-md)", color: "var(--c-danger)", marginBottom: "1rem", fontSize: "var(--text-sm)" }}>{egeError}</div>}
             <Button variant="secondary" onClick={handleEGE} loading={egeLoading}>Сгенерировать вариант ЕГЭ</Button>
           </Card>
+          </div>
         </motion.div>
       </PageWrapper>
     </div>

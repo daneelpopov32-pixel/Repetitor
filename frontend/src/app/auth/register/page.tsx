@@ -82,7 +82,7 @@ export default function RegisterPage() {
             <span>Согласен на обработку персональных данных в соответствии с 152-ФЗ</span>
           </label>
           {error && <div className="error-text">{error}</div>}
-          <Button type="submit" loading={loading} style={{ width: "100%", marginTop: "0.5rem" }}>
+          <Button type="submit" variant="accent" loading={loading} style={{ width: "100%", marginTop: "0.5rem" }}>
             Зарегистрироваться
           </Button>
         </form>

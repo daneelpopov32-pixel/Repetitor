@@ -10,7 +10,6 @@ import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import Spinner from "@/components/ui/Spinner";
-import EmptyState from "@/components/ui/EmptyState";
 
 export default function AttemptPage() {
   const { id: attemptId } = useParams();
@@ -90,15 +89,22 @@ export default function AttemptPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getInstruction = (t: any): string => { const text = getText(t); const tc = t.text_content; const lines = text.split("\n"); const inst: string[] = []; for (const l of lines) { const tr = l.trim(); if (!tr) continue; if (tc?.matching_left?.length && /^[А-Я]\)/.test(tr)) break; if (tc?.sequence_items?.length && /^\d+\)/.test(tr)) break; inst.push(tr); } return inst.join(" ") || text; };
 
+  // Read source text directly from text_content.source_text
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getSourceText = (t: any): string => {
+    const tc = t.text_content;
+    return (typeof tc === "object" && tc?.source_text) || "";
+  };
+
   if (submitted && result) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--c-bg)" }}>
       <motion.div className="card" style={{ textAlign: "center", maxWidth: 400, width: "100%" }} {...slideUp}>
         <div style={{ fontSize: 48, marginBottom: "1rem" }}>🎉</div>
         <h1 style={{ fontSize: "var(--text-2xl)", fontWeight: 700, marginBottom: "1rem" }}>Тест завершён!</h1>
-        <Badge variant="info" style={{ marginBottom: "0.75rem" }}>{result.status}</Badge>
+        <Badge variant="accent" style={{ marginBottom: "0.75rem" }}>{result.status}</Badge>
         <p style={{ fontSize: "var(--text-2xl)", fontWeight: 700, marginBottom: "0.5rem" }}>{result.auto_score} / {result.max_auto_score}</p>
         {result.pending_essay_count > 0 && <p style={{ color: "var(--c-text-secondary)", fontSize: "var(--text-sm)" }}>{result.pending_essay_count} заданий ожидают проверки</p>}
-        <Button onClick={() => router.push("/dashboard")} style={{ marginTop: "1.5rem" }}>На главную</Button>
+        <Button variant="accent" onClick={() => router.push("/dashboard")} style={{ marginTop: "1.5rem" }}>На главную</Button>
       </motion.div>
     </div>
   );
@@ -108,25 +114,27 @@ export default function AttemptPage() {
 
   const task = tasks[currentIdx];
   const tc = task.text_content;
-  const text = getText(task);
+  const source = getSourceText(task);
   const isMatching = tc?.matching_left && tc?.matching_right;
   const isSequence = tc?.sequence_items;
   const answer = answers[task.task_id] || "";
-  const isWarning = remaining !== null && remaining < 300;
-  const isCritical = remaining !== null && remaining < 60;
+  const timerClass = remaining !== null && remaining < 60 ? "timer-critical" : remaining !== null && remaining < 300 ? "timer-warning" : "timer-normal";
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--c-bg)" }}>
-      {/* Top bar */}
-      <div style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--c-surface)", borderBottom: "1px solid var(--c-border)", padding: "0.75rem 1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontWeight: 600 }}>{attempt?.test_title || "Тест"}</span>
+      {/* Top bar — calm timer as pill */}
+      <div style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--c-surface)", borderBottom: "1px solid var(--c-border)", padding: "0.625rem 1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontWeight: 600, fontSize: "var(--text-base)" }}>{attempt?.test_title || "Тест"}</span>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           {remaining !== null && (
-            <span style={{ fontFamily: "monospace", fontSize: "var(--text-lg)", fontWeight: 700, color: isCritical ? "var(--c-danger)" : isWarning ? "var(--c-warning)" : "var(--c-text)" }}>
-              {fmt(remaining)}
+            <span className={`timer-pill ${timerClass}`}>
+              ⏱ {fmt(remaining)}
             </span>
           )}
-          <Button variant="primary" size="sm" onClick={handleSubmit}>Завершить</Button>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+            <span className={`autosave-dot ${saveStatus === "saving" ? "autosave-saving" : ""}`} title={saveStatus === "saved" ? "Сохранено" : saveStatus === "saving" ? "Сохранение..." : "Ошибка"} />
+            <Button variant="accent" size="sm" onClick={handleSubmit}>Завершить</Button>
+          </div>
         </div>
       </div>
 
@@ -142,9 +150,17 @@ export default function AttemptPage() {
         <motion.div key={task.task_id} {...slideUp}>
           <div className="card">
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
-              <Badge variant="info">Тип {task.exam_position || "?"}</Badge>
+              <Badge variant="accent">Тип {task.exam_position || "?"}</Badge>
               <Button variant="ghost" size="sm" onClick={() => setShowInfo(true)}>ℹ</Button>
             </div>
+
+            {/* Source Card — inherited source text */}
+            {source && (
+              <div className="source-card">
+                <div className="source-card-label">Источник</div>
+                <div className="source-card-text">{source}</div>
+              </div>
+            )}
 
             {/* Images */}
             {tc?.images?.filter((p: string) => p != null && p.length > 0).length > 0 && (
@@ -158,16 +174,16 @@ export default function AttemptPage() {
               </div>
             )}
 
-            {/* Instruction */}
-            <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.6, marginBottom: "1rem" }}>{getInstruction(task)}</p>
+            {/* Instruction — larger text for exam readability */}
+            <p style={{ fontSize: "var(--text-lg)", lineHeight: 1.7, marginBottom: "1rem", fontWeight: 500 }}>{getInstruction(task)}</p>
 
             {/* Matching content */}
             {isMatching && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", marginBottom: "1.5rem" }}>
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                <div><div style={{ fontWeight: 600, textAlign: "center", marginBottom: "0.5rem", fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>Левый столбец</div>{tc.matching_left.map((item: any, j: number) => <div key={j} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{item.label}) {item.text}</div>)}</div>
+                <div><div style={{ fontWeight: 600, textAlign: "center", marginBottom: "0.5rem", fontSize: "var(--text-xs)", color: "var(--c-text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Левый столбец</div>{tc.matching_left.map((item: any, j: number) => <div key={j} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{item.label}) {item.text}</div>)}</div>
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                <div><div style={{ fontWeight: 600, textAlign: "center", marginBottom: "0.5rem", fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>Правый столбец</div>{tc.matching_right.map((item: any, j: number) => <div key={j} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{item.label}) {item.text}</div>)}</div>
+                <div><div style={{ fontWeight: 600, textAlign: "center", marginBottom: "0.5rem", fontSize: "var(--text-xs)", color: "var(--c-text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Правый столбец</div>{tc.matching_right.map((item: any, j: number) => <div key={j} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{item.label}) {item.text}</div>)}</div>
               </div>
             )}
 
@@ -186,7 +202,7 @@ export default function AttemptPage() {
                 const flat = Array.isArray(opts[0]) ? opts[0] : opts;
                 return <div style={{ marginBottom: "1rem" }}>{/* eslint-disable-next-line @typescript-eslint/no-explicit-any */flat.map((opt: string, i: number) => <div key={i} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{String.fromCharCode(65 + i)}) {opt}</div>)}</div>;
               }
-              return <textarea style={{ width: "100%", minHeight: 120, padding: "0.75rem", border: "1px solid var(--c-border)", borderRadius: "var(--r-md)", fontFamily: "var(--font)", fontSize: "var(--text-sm)", resize: "vertical" }} value={answer} onChange={(e) => handleChange(task.task_id, e.target.value)} placeholder="Введите ответ..." />;
+              return <textarea style={{ width: "100%", minHeight: 120, padding: "0.75rem", border: "1px solid var(--c-border)", borderRadius: "var(--r-md)", fontFamily: "var(--font)", fontSize: "var(--text-base)", lineHeight: 1.6, resize: "vertical" }} value={answer} onChange={(e) => handleChange(task.task_id, e.target.value)} placeholder="Введите ответ..." />;
             })()}
 
             {/* Answer grid for matching */}
@@ -214,16 +230,11 @@ export default function AttemptPage() {
             {!isMatching && (
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "1rem" }}>
                 <span style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>Ответ:</span>
-                <input type="text" value={answer} onChange={(e) => handleChange(task.task_id, e.target.value)} placeholder="Введите ответ" style={{ flex: 1, maxWidth: 400, padding: "0.5rem 0.75rem", border: "1px solid var(--c-border)", borderRadius: "var(--r-md)", fontSize: "var(--text-sm)" }} />
+                <input type="text" value={answer} onChange={(e) => handleChange(task.task_id, e.target.value)} placeholder="Введите ответ" style={{ flex: 1, maxWidth: 400, padding: "0.5rem 0.75rem", border: "1px solid var(--c-border)", borderRadius: "var(--r-md)", fontSize: "var(--text-base)" }} />
               </div>
             )}
           </div>
         </motion.div>
-
-        {/* Autosave */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.75rem", borderRadius: "var(--r-md)", fontSize: "var(--text-xs)", marginTop: "0.75rem", background: saveStatus === "saving" ? "var(--c-warning-bg)" : saveStatus === "error" ? "var(--c-danger-bg)" : "var(--c-success-bg)", color: saveStatus === "saving" ? "#854d0e" : saveStatus === "error" ? "#991b1b" : "#166534" }}>
-          {saveStatus === "saved" ? "✓ Сохранено" : saveStatus === "saving" ? "⏳ Сохранение..." : "✕ Ошибка"}
-        </div>
 
         {/* Bottom nav */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "1rem" }}>

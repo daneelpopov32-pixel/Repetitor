@@ -378,13 +378,14 @@ def _extract_sequence_items(text):
 
 
 def _extract_tasks_from_html(html):
-    """Extract tasks from FIPI HTML with stateful image binding.
+    """Extract tasks from FIPI HTML with stateful image and source text binding.
 
-    Uses a stateful pass through qblocks to correctly bind images:
+    Uses a stateful pass through qblocks to correctly bind images and source text:
     - ShowPicture() in standalone blocks = context image (carries forward)
     - ShowPictureQ() in task blocks = task's own image
+    - Text in standalone blocks = source text (carries forward to subsequent tasks)
 
-    Three scenarios:
+    Three image scenarios:
     1. Own image only (no context active)
     2. Inherited context image only (no own image)
     3. Context + own image (both present, context first)
@@ -393,9 +394,18 @@ def _extract_tasks_from_html(html):
     qblocks = soup.find_all("div", class_="qblock")
     tasks = []
 
-    # Stateful: current active context image from a standalone block
-    # Persists across tasks until overwritten by a new standalone block
+    # Stateful variables from standalone blocks — persist across tasks
     active_context_image = None
+    active_source_text = None
+    active_files_location = "../../"  # Default; updated per standalone block
+
+    # Generic instruction phrases that are NOT real source text
+    _INSTRUCTION_PATTERNS = re.compile(
+        r'(?:^(?:прочтите|прочитайте|ознакомьтесь|рассмотрите|изучите)\s+'
+        r'(?:текст|отрывок|документ|предложение|информацию)'
+        r'(?:\s+и\s+выполните\s+задания)?\.?\s*)',
+        re.IGNORECASE
+    )
 
     for qb in qblocks:
         task = {"block_id": qb.get("id", "").replace("q", "")}
@@ -405,14 +415,42 @@ def _extract_tasks_from_html(html):
         form = qb.find("form", id=lambda x: x and x.startswith("checkform"))
 
         if not form:
-            # Standalone block: may contain context image via ShowPicture()
+            # Standalone block: may contain context image AND/OR source text
             pics = re.findall(r"ShowPicture\('([^']+)'\)", str(qb))
-            if pics:
-                active_context_image = _resolve_image_url(pics[0])
-            # Also check for <img> tags in standalone blocks
             img_tags = [img.get("src", "") for img in qb.find_all("img") if img.get("src")]
-            if img_tags and not pics:
-                active_context_image = _resolve_image_url(img_tags[0])
+
+            # Extract files_location from this block for URL construction
+            fl_match = re.search(r"files_location\s*=\s*['\"]([^'\"]+)['\"]", str(qb))
+            if fl_match:
+                active_files_location = fl_match.group(1)
+
+            # Extract source text from standalone block
+            qb_text = qb.get_text(separator="\n", strip=True)
+            qb_text = re.sub(r"ShowPicture\w*\('[^']*'\);?", "", qb_text).strip()
+
+            if not qb_text:
+                active_source_text = None
+                # Pure image block — set context image
+                if pics:
+                    active_context_image = _resolve_image_url(pics[0], active_files_location)
+                elif img_tags:
+                    active_context_image = _resolve_image_url(img_tags[0], active_files_location)
+                continue
+
+            # Strip leading instruction phrases
+            source_body = _INSTRUCTION_PATTERNS.sub("", qb_text).strip()
+
+            if source_body and len(source_body) > 20:
+                # Substantial source text — this is a SOURCE block, not a context block
+                # Do NOT set active_context_image from this block's image
+                active_source_text = source_body
+            else:
+                # Only instruction or too short
+                active_source_text = None
+                if pics:
+                    active_context_image = _resolve_image_url(pics[0], active_files_location)
+                elif img_tags:
+                    active_context_image = _resolve_image_url(img_tags[0], active_files_location)
             continue
 
         # Task block (has form with guid)
@@ -430,7 +468,7 @@ def _extract_tasks_from_html(html):
         own_images = []
         qb_str = str(qb)
         for m in re.finditer(r"ShowPictureQ\w*\('([^']+)'\)", qb_str):
-            own_images.append(_resolve_image_url(m.group(1)))
+            own_images.append(_resolve_image_url(m.group(1), active_files_location))
 
         # Also check <img> tags in cell (may exist alongside ShowPictureQ)
         cell_imgs = [img.get("src", "") for img in cell.find_all("img") if img.get("src")]
@@ -458,7 +496,16 @@ def _extract_tasks_from_html(html):
             task["image_scenario"] = "none"
 
         # Clean text FIRST — remove UI elements before type detection
-        task["text"] = _clean_cell_text(cell)
+        cell_text = _clean_cell_text(cell)
+        task["cell_text"] = cell_text  # Original task text for hash matching
+
+        # Store source text separately — do NOT prepend to task text
+        # (prepending breaks matching detection and type identification)
+        if active_source_text and cell_text:
+            task["source_text"] = active_source_text
+            task["text"] = cell_text
+        else:
+            task["text"] = cell_text
 
         # Detect task type using form structure + cleaned text + cell DOM
         task_type, subtype = _detect_task_type(form, task["text"], cell)
@@ -495,30 +542,28 @@ def _extract_tasks_from_html(html):
     return tasks
 
 
-def _resolve_image_url(img: str) -> str:
-    """Resolve an image path to a full HTTPS URL."""
-    if img.startswith("../../"):
-        img = f"https://ege.fipi.ru/{img[6:]}"
-    elif img.startswith("docs/"):
-        img = f"https://ege.fipi.ru/{img}"
-    elif img.startswith("xs3docsrc"):
-        m = re.match(r"xs3docsrc([A-F0-9]{32})_\d+_\d+\.\w+", img, re.IGNORECASE)
-        if m:
-            guid = m.group(1)
-            img = f"https://ege.fipi.ru/docs/{FIPI_PROJECT_ID}/docs/{guid}/{img}"
-    elif img.startswith("xs3qstsrc"):
-        m = re.match(r"xs3qstsrc([A-F0-9]{32})_\d+_\d+\.\w+", img, re.IGNORECASE)
-        if m:
-            guid = m.group(1)
-            img = f"https://ege.fipi.ru/docs/{FIPI_PROJECT_ID}/questions/{guid}(copy1)/{img}"
-    elif not img.startswith("http"):
-        img = f"https://ege.fipi.ru/bank/{img}"
-    return img
+def _resolve_image_url(img: str, files_location: str = "../../") -> str:
+    """Resolve an image path to a full HTTPS URL using files_location from HTML."""
+    if img.startswith("../../") or img.startswith("docs/") or img.startswith("http"):
+        # Already a relative or absolute path — resolve from base
+        if img.startswith("../../"):
+            img = f"https://ege.fipi.ru/{img[6:]}"
+        elif img.startswith("docs/"):
+            img = f"https://ege.fipi.ru/{img}"
+        return img
+
+    # Bare filename (xs3docsrc... or xs3qstsrc...) — use files_location from HTML
+    # files_location is like "../../docs/{project_id}/docs/{guid}/"
+    # or "../../docs/{project_id}/questions/{guid}(copyN)/"
+    base = f"https://ege.fipi.ru/{files_location.lstrip('../../')}" if files_location.startswith("../../") else f"https://ege.fipi.ru/{files_location}"
+    return f"{base}{img}"
 
 
 def _build_text_content(task_data):
     """Build text_content dict from parsed task data, handling all subtypes."""
     text_content = {"text": task_data.get("text", "")}
+    if task_data.get("source_text"):
+        text_content["source_text"] = task_data["source_text"]
     if task_data.get("images"):
         text_content["images"] = task_data["images"]
     if task_data.get("matching_left"):
@@ -844,32 +889,60 @@ def create_test_from_fipi(self, tutor_id, title, theme_codes, count_per_theme, t
 def _sync_images_from_full_list(max_pages=200):
     """Sync images by iterating through FIPI full list (no theme filter).
 
+    Matching strategy (two-tier):
+    1. GUID — precise match via metadata_.fipi_guid (handles duplicate texts
+       across different FIPI pages, each with its own context image)
+    2. Text hash — fallback for tasks without GUID
+
     FIPI blocks ShowPicture/ShowPictureQ when theme=X. is used.
     This function fetches the full list (pagesize=10, no theme filter)
-    to get images, then matches by GUID to existing tasks in DB.
+    to get images, then matches to existing tasks in DB.
 
     Returns: {pages_scanned, tasks_with_images, images_downloaded, updated}
     """
     import time
+    import hashlib
+    import json
     from app.models import Task
     from app.services.image_downloader import download_task_images
 
+    def compute_text_hash(text_content: dict) -> str:
+        """Compute hash of text_content for matching."""
+        normalized = json.dumps(text_content, sort_keys=True, ensure_ascii=False)
+        return hashlib.sha256(normalized.encode()).hexdigest()
+
     db = _get_sync_session()
     try:
-        # Build GUID → task mapping for all existing tasks
-        all_tasks = db.query(Task).filter(Task.metadata_["fipi_guid"].isnot(None)).all()
+        # Build TWO mappings: GUID → task AND text_hash → task
+        all_tasks = db.query(Task).filter(
+            Task.text_content.isnot(None)
+        ).all()
+
         guid_to_task = {}
+        text_hash_to_task = {}
         for t in all_tasks:
-            guid = (t.metadata_ or {}).get("fipi_guid")
+            meta = t.metadata_ or {}
+            guid = meta.get("fipi_guid")
             if guid:
                 guid_to_task[guid.upper()] = t
 
-        logger.info("Found %d tasks with GUIDs in DB", len(guid_to_task))
+            tc = t.text_content or {}
+            if tc.get("text"):
+                text_hash = compute_text_hash({"text": tc["text"]})
+                # Only store in text_hash if no GUID mapping exists (don't overwrite)
+                if text_hash not in text_hash_to_task:
+                    text_hash_to_task[text_hash] = t
+
+        logger.info("Found %d tasks with GUIDs, %d with text hashes",
+                     len(guid_to_task), len(text_hash_to_task))
 
         pages_scanned = 0
         tasks_with_images = 0
         images_downloaded = 0
         updated = 0
+        no_match = 0
+        guid_matched = 0
+        hash_matched = 0
 
         with httpx.Client(timeout=30, follow_redirects=True, verify=False) as client:
             page = 1
@@ -902,40 +975,60 @@ def _sync_images_from_full_list(max_pages=200):
                 pages_scanned += 1
 
                 for task_data in page_tasks:
-                    guid = task_data.get("guid", "").upper()
-                    if not guid:
-                        continue
-
-                    images = task_data.get("images", [])
+                    images = [i for i in task_data.get("images", []) if i]
                     if not images:
                         continue
 
                     tasks_with_images += 1
 
-                    # Find matching task in DB
-                    db_task = guid_to_task.get(guid)
+                    # TIER 1: Match by GUID (precise, handles duplicate texts)
+                    task_guid = task_data.get("guid", "").upper()
+                    db_task = None
+                    if task_guid:
+                        db_task = guid_to_task.get(task_guid)
+                        if db_task:
+                            guid_matched += 1
+
+                    # TIER 2: Fallback to text hash (for tasks without GUID in DB)
                     if not db_task:
+                        cell_text = task_data.get("cell_text", "") or task_data.get("text", "")
+                        if not cell_text:
+                            continue
+                        text_hash = compute_text_hash({"text": cell_text})
+                        db_task = text_hash_to_task.get(text_hash)
+                        if db_task:
+                            hash_matched += 1
+
+                    if not db_task:
+                        no_match += 1
                         continue
 
-                    # Check if task already has images
-                    existing_images = (db_task.text_content or {}).get("images", [])
-                    if existing_images and any(p for p in existing_images if p):
-                        continue  # Already has images, skip
+                    # Compare FIPI URLs with stored URLs — update only if different
+                    existing_fipi_urls = (db_task.text_content or {}).get("fipi_urls", [])
+                    new_fipi_urls = [p for p in images if p]
 
-                    # Download images
+                    # Skip if same FIPI URLs already stored
+                    if existing_fipi_urls == new_fipi_urls:
+                        continue
+
+                    # Download images (skip files already on disk)
                     local_paths = download_task_images(images)
-                    if not local_paths or not any(local_paths):
-                        continue
 
-                    # Update task's text_content
+                    # Update text_content — always store fipi_urls, only update images if download succeeded
                     text_content = dict(db_task.text_content or {})
-                    text_content["images"] = local_paths
+                    text_content["fipi_urls"] = new_fipi_urls
+                    if local_paths and any(local_paths):
+                        text_content["images"] = local_paths
+                        images_downloaded += sum(1 for p in local_paths if p)
                     db_task.text_content = text_content
-                    images_downloaded += sum(1 for p in local_paths if p)
                     updated += 1
 
                 if pages_scanned % 20 == 0:
-                    logger.info("Image sync: scanned %d pages, updated %d tasks", pages_scanned, updated)
+                    logger.info(
+                        "Image sync: scanned %d pages, updated %d tasks "
+                        "(%d GUID, %d hash, %d no match)",
+                        pages_scanned, updated, guid_matched, hash_matched, no_match
+                    )
 
                 page += 1
                 time.sleep(0.5)  # polite delay
@@ -947,6 +1040,9 @@ def _sync_images_from_full_list(max_pages=200):
             "tasks_with_images": tasks_with_images,
             "images_downloaded": images_downloaded,
             "updated": updated,
+            "guid_matched": guid_matched,
+            "hash_matched": hash_matched,
+            "no_match": no_match,
         }
         logger.info("Image sync complete: %s", result)
         return result

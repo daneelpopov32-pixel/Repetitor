@@ -1,6 +1,6 @@
 import { CSSProperties } from "react";
 
-type Variant = "default" | "success" | "warning" | "danger" | "info";
+type Variant = "default" | "success" | "warning" | "danger" | "info" | "accent";
 
 const variantClass: Record<Variant, string> = {
   default: "badge-default",
@@ -8,6 +8,7 @@ const variantClass: Record<Variant, string> = {
   warning: "badge-warning",
   danger: "badge-danger",
   info: "badge-info",
+  accent: "badge-accent",
 };
 
 interface BadgeProps {

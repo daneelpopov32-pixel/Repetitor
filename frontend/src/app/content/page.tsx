@@ -139,9 +139,9 @@ export default function ContentPage() {
         title="Контент"
         actions={
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            <Button variant="success" size="sm" onClick={() => syncAction(() => api.syncCodifier("История", auth.token!), "Кодификатор синхронизирован")}>⟳ Кодификатор</Button>
+            <Button variant="accent" size="sm" onClick={() => syncAction(() => api.syncCodifier(subjects.find((s) => s.id === selectedSubject)?.name || "История", auth.token!), "Кодификатор синхронизирован")}>⟳ Кодификатор</Button>
             <Button variant="secondary" size="sm" onClick={() => { const c = prompt("Код темы (напр. 8.):"); if (c) syncAction(() => api.syncTheme(c, auth.token!), `Тема ${c} синхронизирована`); }}>⟳ Тему</Button>
-            <Button variant="secondary" size="sm" onClick={() => { if (confirm("Синхронизировать весь предмет?")) syncAction(() => api.syncSubject("История", auth.token!), "Предмет синхронизирован"); }}>⟳ Весь предмет</Button>
+            <Button variant="secondary" size="sm" onClick={() => { if (confirm("Синхронизировать весь предмет?")) syncAction(() => api.syncSubject(subjects.find((s) => s.id === selectedSubject)?.name || "История", auth.token!), "Предмет синхронизирован"); }}>⟳ Весь предмет</Button>
             <Button variant="secondary" size="sm" onClick={() => { if (confirm("Синхронизировать изображения из полного списка FIPI? Это займёт время.")) syncAction(() => api.syncImages(auth.token!), "Синхронизация изображений запущена"); }}>🖼 Изображения</Button>
           </div>
         }
@@ -202,7 +202,7 @@ export default function ContentPage() {
                   onClick={() => setSelectedSubject(s.id)}
                   style={{
                     padding: "0.4rem 0.75rem", borderRadius: "var(--r-md)", cursor: "pointer",
-                    background: selectedSubject === s.id ? "var(--c-primary)" : "transparent",
+                    background: selectedSubject === s.id ? "var(--c-accent)" : "transparent",
                     color: selectedSubject === s.id ? "white" : "var(--c-text)",
                     fontSize: "var(--text-sm)", fontWeight: 500, marginBottom: 2,
                   }}

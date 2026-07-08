@@ -122,14 +122,14 @@ export default function TestsPage() {
       <Sidebar />
       <PageWrapper
         title="Тесты"
-        actions={<Button onClick={() => router.push("/tests/new")}>+ Создать тест</Button>}
+        actions={<Button variant="accent" onClick={() => router.push("/tests/new")}>+ Создать тест</Button>}
       >
         <div style={{ marginBottom: "1rem" }}>
           <Input placeholder="Поиск по названию..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 320 }} />
         </div>
 
         {tests.length === 0 ? (
-          <EmptyState icon="📝" title="Нет тестов" text="Создайте первый тест из банка ФИПИ" action={<Button onClick={() => router.push("/tests/new")}>Создать тест</Button>} />
+          <EmptyState icon="📝" title="Нет тестов" text="Создайте первый тест из банка ФИПИ" action={<Button variant="accent" onClick={() => router.push("/tests/new")}>Создать тест</Button>} />
         ) : (
           <motion.div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }} {...stagger}>
             {tests.map((t, idx) => {
@@ -189,7 +189,7 @@ export default function TestsPage() {
       </PageWrapper>
 
       {/* Assign Modal */}
-      <Modal open={!!assignTestId} onClose={() => setAssignTestId(null)} title="Назначить тест" footer={<><Button variant="secondary" onClick={() => setAssignTestId(null)}>Отмена</Button><Button onClick={doAssign}>Назначить</Button></>}>
+      <Modal open={!!assignTestId} onClose={() => setAssignTestId(null)} title="Назначить тест" footer={<><Button variant="secondary" onClick={() => setAssignTestId(null)}>Отмена</Button><Button variant="accent" onClick={doAssign}>Назначить</Button></>}>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: 300, overflowY: "auto" }}>
           {students.map((s) => (
             <label key={s.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem", borderRadius: "var(--r-md)", cursor: "pointer" }}
