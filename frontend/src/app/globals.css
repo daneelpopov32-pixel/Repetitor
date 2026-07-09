@@ -906,6 +906,45 @@ a:hover {
 }
 
 /* ═══════════════════════════════════════════════════════
+   CONTENT PAGE — mobile layout
+   ═══════════════════════════════════════════════════════ */
+
+.content-grid {
+  grid-template-columns: 260px 1fr;
+}
+
+.content-sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.content-subjects-scroll {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding-bottom: var(--sp-2);
+  -webkit-overflow-scrolling: touch;
+}
+
+.content-subjects-scroll::-webkit-scrollbar {
+  height: 0;
+}
+
+@media (max-width: 768px) {
+  .content-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .content-sync-actions {
+    flex-direction: column;
+  }
+  .content-sync-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
    UTILITY
    ═══════════════════════════════════════════════════════ */
 

@@ -138,7 +138,7 @@ export default function ContentPage() {
       <PageWrapper
         title="Контент"
         actions={
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <div className="content-sync-actions">
             <Button variant="accent" size="sm" onClick={() => syncAction(() => api.syncCodifier(subjects.find((s) => s.id === selectedSubject)?.name || "История", auth.token!), "Кодификатор синхронизирован")}>⟳ Кодификатор</Button>
             <Button variant="secondary" size="sm" onClick={() => { const c = prompt("Код темы (напр. 8.):"); if (c) syncAction(() => api.syncTheme(c, auth.token!), `Тема ${c} синхронизирована`); }}>⟳ Тему</Button>
             <Button variant="secondary" size="sm" onClick={() => { if (confirm("Синхронизировать весь предмет?")) syncAction(() => api.syncSubject(subjects.find((s) => s.id === selectedSubject)?.name || "История", auth.token!), "Предмет синхронизирован"); }}>⟳ Весь предмет</Button>
@@ -178,7 +178,7 @@ export default function ContentPage() {
         {subjects.length === 0 && !showAddSubject ? (
           <EmptyState icon="📚" title="Нет предметов" text="Добавьте предмет, чтобы начать" action={<Button onClick={() => setShowAddSubject(true)}>Добавить предмет</Button>} />
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: "1rem" }}>
+          <div className="content-grid" style={{ display: "grid", gap: "1rem" }}>
             {/* Left: subjects */}
             <Card>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
@@ -196,20 +196,22 @@ export default function ContentPage() {
                   </motion.div>
                 )}
               </AnimatePresence>
-              {subjects.map((s) => (
-                <div
-                  key={s.id}
-                  onClick={() => setSelectedSubject(s.id)}
-                  style={{
-                    padding: "0.4rem 0.75rem", borderRadius: "var(--r-md)", cursor: "pointer",
-                    background: selectedSubject === s.id ? "var(--c-accent)" : "transparent",
-                    color: selectedSubject === s.id ? "white" : "var(--c-text)",
-                    fontSize: "var(--text-sm)", fontWeight: 500, marginBottom: 2,
-                  }}
-                >
-                  {s.name}
-                </div>
-              ))}
+              <div className="content-subjects-scroll">
+                {subjects.map((s) => (
+                  <div
+                    key={s.id}
+                    onClick={() => setSelectedSubject(s.id)}
+                    style={{
+                      padding: "0.4rem 0.75rem", borderRadius: "var(--r-md)", cursor: "pointer",
+                      background: selectedSubject === s.id ? "var(--c-accent)" : "transparent",
+                      color: selectedSubject === s.id ? "white" : "var(--c-text)",
+                      fontSize: "var(--text-sm)", fontWeight: 500, whiteSpace: "nowrap", flexShrink: 0,
+                    }}
+                  >
+                    {s.name}
+                  </div>
+                ))}
+              </div>
             </Card>
 
             {/* Right: themes + tasks */}
@@ -222,12 +224,13 @@ export default function ContentPage() {
                   </Card>
 
                   <Card>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", gap: "0.5rem", flexWrap: "wrap" }}>
                       <h3 style={{ fontSize: "var(--text-lg)", fontWeight: 600 }}>Задания ({taskTotal})</h3>
                       <Select
                         value={filterType}
                         onChange={(e) => setFilterType(e.target.value)}
                         options={[{ value: "", label: "Все типы" }, { value: "TEST", label: "Тест" }, { value: "ESSAY", label: "Развёрнутый" }]}
+                        style={{ minWidth: 120 }}
                       />
                     </div>
                     {filteredTasks.length === 0 ? (
@@ -235,10 +238,10 @@ export default function ContentPage() {
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: 400, overflowY: "auto" }}>
                         {filteredTasks.slice(0, 50).map((t) => (
-                          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "var(--r-md)", border: "1px solid var(--c-border)", fontSize: "var(--text-sm)" }}>
+                          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.75rem", borderRadius: "var(--r-md)", border: "1px solid var(--c-border)", fontSize: "var(--text-sm)", flexWrap: "wrap" }}>
                             <Badge variant={t.type === "TEST" ? "info" : "warning"}>{t.type === "TEST" ? "Т" : "Э"}</Badge>
                             {t.exam_position && <Badge variant="default">Тип {t.exam_position}</Badge>}
-                            <span className="truncate" style={{ flex: 1, color: "var(--c-text-secondary)" }}>
+                            <span className="truncate" style={{ flex: 1, color: "var(--c-text-secondary)", minWidth: 0 }}>
                               {(t.text_preview || "").slice(0, 100)}
                             </span>
                           </div>
