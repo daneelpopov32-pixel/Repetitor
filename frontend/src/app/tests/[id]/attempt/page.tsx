@@ -27,6 +27,7 @@ export default function AttemptPage() {
   const [result, setResult] = useState<any>(null);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const [showInfo, setShowInfo] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const debounceRef = useRef<NodeJS.Timeout>(null);
   const timerRef = useRef<NodeJS.Timeout>(null);
 
@@ -36,6 +37,12 @@ export default function AttemptPage() {
     loadData();
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [auth.token, hydrated, attemptId]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && lightboxSrc) setLightboxSrc(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightboxSrc]);
 
   const loadData = async () => {
     try {
@@ -86,8 +93,31 @@ export default function AttemptPage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getText = (t: any): string => { const tc = t.text_content; return typeof tc === "object" && tc?.text ? tc.text : tc || ""; };
+
+  // Extract FIPI column names (uppercase labels) from instruction text
+  // e.g. "ПАМЯТНИКИ КУЛЬТУРЫ ХАРАКТЕРИСТИКИ" → left="ПАМЯТНИКИ КУЛЬТУРЫ", right="ХАРАКТЕРИСТИКИ"
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const getInstruction = (t: any): string => { const text = getText(t); const tc = t.text_content; const lines = text.split("\n"); const inst: string[] = []; for (const l of lines) { const tr = l.trim(); if (!tr) continue; if (tc?.matching_left?.length && /^[А-Я]\)/.test(tr)) break; if (tc?.sequence_items?.length && /^\d+\)/.test(tr)) break; inst.push(tr); } return inst.join(" ") || text; };
+  const getFipiHeaders = (t: any): { left: string; right: string } | null => {
+    const text = getText(t);
+    const tc = t.text_content;
+    if (!tc?.matching_left) return null;
+    const lines = text.split("\n");
+    const inst: string[] = [];
+    for (const l of lines) {
+      const tr = l.trim();
+      if (!tr) continue;
+      if (/^[А-Я]\)/.test(tr)) break;
+      inst.push(tr);
+    }
+    const joined = inst.join(" ");
+    // Match trailing uppercase words (FIPI column labels)
+    const m = joined.match(/([А-ЯЁ][А-ЯЁ\s,]+)\s+([А-ЯЁ]+)\s*$/);
+    if (!m) return null;
+    return { left: m[1].trim(), right: m[2].trim() };
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getInstruction = (t: any): string => { const text = getText(t); const tc = t.text_content; const lines = text.split("\n"); const inst: string[] = []; for (const l of lines) { const tr = l.trim(); if (!tr) continue; if (tc?.matching_left?.length && /^[А-Я]\)/.test(tr)) break; if (tc?.sequence_items?.length && /^\d+\)/.test(tr)) break; inst.push(tr); } const joined = inst.join(" ") || text; const stripped = joined.replace(/\s+[А-ЯЁ][А-ЯЁ\s,()]+[А-ЯЁ]+(?:\s+[А-ЯЁ][А-ЯЁ\s,()]+[А-ЯЁ]+)*$/g, "").trim(); return stripped || text; };
 
   // Read source text directly from text_content.source_text
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -119,6 +149,7 @@ export default function AttemptPage() {
   const isSequence = tc?.sequence_items;
   const answer = answers[task.task_id] || "";
   const timerClass = remaining !== null && remaining < 60 ? "timer-critical" : remaining !== null && remaining < 300 ? "timer-warning" : "timer-normal";
+  const fipiHeaders = getFipiHeaders(task);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--c-bg)" }}>
@@ -151,6 +182,7 @@ export default function AttemptPage() {
           <div className="card">
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
               <Badge variant="accent">Тип {task.exam_position || "?"}</Badge>
+              <Badge variant={task.type === "TEST" ? "default" : "warning"}>{task.type}</Badge>
               <Button variant="ghost" size="sm" onClick={() => setShowInfo(true)}>ℹ</Button>
             </div>
 
@@ -167,7 +199,7 @@ export default function AttemptPage() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "0.75rem", margin: "1rem 0" }}>
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 {tc.images.filter((p: any) => p != null && p.length > 0).map((imgPath: string, i: number) => (
-                  <div key={i}>
+                  <div key={i} style={{ cursor: "pointer" }} onClick={() => setLightboxSrc(`/api/v1/media/images/${imgPath.split("/").pop()}`)}>
                     <img src={`/api/v1/media/images/${imgPath.split("/").pop()}`} alt={`${i + 1}`} style={{ width: "100%", display: "block", borderRadius: "var(--r-md)", border: "1px solid var(--c-border)" }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                   </div>
                 ))}
@@ -179,11 +211,17 @@ export default function AttemptPage() {
 
             {/* Matching content */}
             {isMatching && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", marginBottom: "1.5rem" }}>
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                <div><div style={{ fontWeight: 600, textAlign: "center", marginBottom: "0.5rem", fontSize: "var(--text-xs)", color: "var(--c-text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Левый столбец</div>{tc.matching_left.map((item: any, j: number) => <div key={j} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{item.label}) {item.text}</div>)}</div>
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                <div><div style={{ fontWeight: 600, textAlign: "center", marginBottom: "0.5rem", fontSize: "var(--text-xs)", color: "var(--c-text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Правый столбец</div>{tc.matching_right.map((item: any, j: number) => <div key={j} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{item.label}) {item.text}</div>)}</div>
+              <div className="matching-grid">
+                <div>
+                  <div className="matching-col-header">{fipiHeaders?.left || "Левый столбец"}</div>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {tc.matching_left.map((item: any, j: number) => <div key={j} className="matching-item">{item.label}) {item.text}</div>)}
+                </div>
+                <div>
+                  <div className="matching-col-header">{fipiHeaders?.right || "Правый столбец"}</div>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {tc.matching_right.map((item: any, j: number) => <div key={j} className="matching-item">{item.label}) {item.text}</div>)}
+                </div>
               </div>
             )}
 
@@ -195,44 +233,75 @@ export default function AttemptPage() {
               </ol>
             )}
 
-            {/* Default content */}
+            {/* Default content — options as clickable radio/checkbox */}
             {!isMatching && !isSequence && (() => {
               const opts = tc?.options;
               if (opts && Array.isArray(opts) && opts.length > 0) {
                 const flat = Array.isArray(opts[0]) ? opts[0] : opts;
-                return <div style={{ marginBottom: "1rem" }}>{/* eslint-disable-next-line @typescript-eslint/no-explicit-any */flat.map((opt: string, i: number) => <div key={i} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{String.fromCharCode(65 + i)}) {opt}</div>)}</div>;
+                const isMultiple = task.answer_type === "multiple_choice";
+                const selectedIndices = isMultiple ? (answer.split(",").filter(Boolean).map(Number)) : (answer !== "" ? [parseInt(answer, 10)] : []);
+                const handleOptionToggle = (idx: number) => {
+                  if (isMultiple) {
+                    const current = answer.split(",").filter(Boolean).map(Number);
+                    const next = current.includes(idx) ? current.filter((x) => x !== idx) : [...current, idx];
+                    next.sort((a, b) => a - b);
+                    handleChange(task.task_id, next.join(","));
+                  } else {
+                    handleChange(task.task_id, String(idx));
+                  }
+                };
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1rem" }}>
+                    {flat.map((opt: string, i: number) => {
+                      const isSelected = selectedIndices.includes(i);
+                      return (
+                        <label key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.875rem", borderRadius: "var(--r-md)", cursor: "pointer", border: `1.5px solid ${isSelected ? "var(--c-accent)" : "var(--c-border)"}`, background: isSelected ? "color-mix(in srgb, var(--c-accent) 8%, transparent)" : "var(--c-bg)", transition: "all 0.15s" }} onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.borderColor = "var(--c-text-secondary)"; }} onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.borderColor = "var(--c-border)"; }}>
+                          <input type={isMultiple ? "checkbox" : "radio"} name={`task-${task.task_id}`} checked={isSelected} onChange={() => handleOptionToggle(i)} style={{ accentColor: "var(--c-accent)", width: 16, height: 16 }} />
+                          <span style={{ fontSize: "var(--text-sm)", fontWeight: 500, minWidth: 24, color: "var(--c-text-secondary)" }}>{String.fromCharCode(65 + i)})</span>
+                          <span style={{ fontSize: "var(--text-sm)" }}>{opt}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                );
               }
-              return <textarea style={{ width: "100%", minHeight: 120, padding: "0.75rem", border: "1px solid var(--c-border)", borderRadius: "var(--r-md)", fontFamily: "var(--font)", fontSize: "var(--text-base)", lineHeight: 1.6, resize: "vertical" }} value={answer} onChange={(e) => handleChange(task.task_id, e.target.value)} placeholder="Введите ответ..." />;
+              return null;
             })()}
 
             {/* Answer grid for matching */}
             {isMatching && (
               <div style={{ marginTop: "1rem" }}>
                 <p style={{ fontSize: "var(--text-sm)", marginBottom: "0.5rem" }}>Запишите цифры в порядке букв:</p>
-                <table style={{ borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>
-                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                      {tc.matching_left.map((item: any, j: number) => <th key={j} style={{ padding: "0.5rem", border: "1px solid var(--c-border)", fontWeight: 600, fontSize: "var(--text-sm)" }}>{item.label}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                      {tc.matching_left.map((item: any, j: number) => <td key={j} style={{ padding: 0, border: "1px solid var(--c-border)" }}><input type="text" maxLength={1} data-task={task.task_id} data-index={j} value={answer[j] || ""} onChange={(e) => handleGridInput(task.task_id, j, e.target.value, tc.matching_left.length - 1)} style={{ width: "100%", height: 40, border: "none", textAlign: "center", fontSize: "var(--text-lg)", outline: "none" }} /></td>)}
-                    </tr>
-                  </tbody>
-                </table>
+                <div className="matching-answer-grid-wrap">
+                  <table className="matching-answer-grid">
+                    <thead>
+                      <tr>
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                        {tc.matching_left.map((item: any, j: number) => <th key={j}>{item.label}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                        {tc.matching_left.map((item: any, j: number) => <td key={j}><input type="text" maxLength={1} data-task={task.task_id} data-index={j} value={answer[j] || ""} onChange={(e) => handleGridInput(task.task_id, j, e.target.value, tc.matching_left.length - 1)} /></td>)}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
-            {/* Final answer */}
-            {!isMatching && (
-              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "1rem" }}>
-                <span style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>Ответ:</span>
-                <input type="text" value={answer} onChange={(e) => handleChange(task.task_id, e.target.value)} placeholder="Введите ответ" style={{ flex: 1, maxWidth: 400, padding: "0.5rem 0.75rem", border: "1px solid var(--c-border)", borderRadius: "var(--r-md)", fontSize: "var(--text-base)" }} />
-              </div>
-            )}
+            {/* Free text input for tasks without options */}
+            {!isMatching && !isSequence && (() => {
+              const opts = tc?.options;
+              if (opts && Array.isArray(opts) && opts.length > 0) return null;
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "1rem" }}>
+                  <span style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>Ответ:</span>
+                  <input type="text" value={answer} onChange={(e) => handleChange(task.task_id, e.target.value)} placeholder="Введите ответ" style={{ flex: 1, maxWidth: 400, padding: "0.5rem 0.75rem", border: "1px solid var(--c-border)", borderRadius: "var(--r-md)", fontSize: "var(--text-base)" }} />
+                </div>
+              );
+            })()}
           </div>
         </motion.div>
 
@@ -248,6 +317,13 @@ export default function AttemptPage() {
         <p style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>Тема: {task.theme_name || task.theme_id}</p>
         <p style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>Тип: {task.exam_position ? `Тип ${task.exam_position}` : "—"}{task.difficulty_level ? ` (${task.difficulty_level})` : ""}</p>
       </Modal>
+
+      {/* Image lightbox */}
+      {lightboxSrc && (
+        <div onClick={() => setLightboxSrc(null)} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "zoom-out", padding: "2rem" }}>
+          <img src={lightboxSrc} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: "var(--r-md)" }} />
+        </div>
+      )}
     </div>
   );
 }

@@ -131,6 +131,7 @@ async def get_attempt_tasks(db: AsyncSession, attempt_id: UUID) -> dict:
                 "task_id": tt.task.id,
                 "order_number": tt.order_number,
                 "type": tt.task.type,
+                "answer_type": (tt.task.correct_answer_key or {}).get("type", "short_answer"),
                 "text_content": tt.task.text_content,
                 "exam_position": tt.task.exam_position,
                 "difficulty_level": tt.task.difficulty_level,

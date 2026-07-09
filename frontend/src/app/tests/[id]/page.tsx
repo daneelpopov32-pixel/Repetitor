@@ -34,12 +34,19 @@ export default function TestDetailPage() {
   const [viewMode, setViewMode] = useState<"single" | "list">("list");
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [showInfo, setShowInfo] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hydrated) return;
     if (!auth.token || auth.role !== "TUTOR") { router.replace("/auth/login"); return; }
     api.getTest(testId as string, auth.token).then(setTest).catch((e) => setError(e.message)).finally(() => setLoading(false));
   }, [auth.token, hydrated, testId]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && lightboxSrc) setLightboxSrc(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightboxSrc]);
 
   const deleteTest = async () => { if (!confirm("Удалить тест?")) return; try { await api.deleteTest(testId as string, auth.token!); router.push("/tests"); } catch (e: unknown) { setError(e instanceof Error ? e.message : "Ошибка"); } };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,28 +56,50 @@ export default function TestDetailPage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getText = (t: any): string => { const tc = t.text_content; return typeof tc === "object" && tc?.text ? tc.text : tc || ""; };
+
+  // Extract FIPI column names (uppercase labels) from instruction text
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const getInstruction = (t: any): string => { const text = getText(t); const tc = t.text_content; const lines = text.split("\n"); const inst: string[] = []; for (const l of lines) { const tr = l.trim(); if (!tr) continue; if (tc?.matching_left?.length && /^[А-Я]\)/.test(tr)) break; if (tc?.sequence_items?.length && /^\d+\)/.test(tr)) break; inst.push(tr); } return inst.join(" ") || text; };
+  const getFipiHeaders = (t: any): { left: string; right: string } | null => {
+    const text = getText(t);
+    const tc = t.text_content;
+    if (!tc?.matching_left) return null;
+    const lines = text.split("\n");
+    const inst: string[] = [];
+    for (const l of lines) {
+      const tr = l.trim();
+      if (!tr) continue;
+      if (/^[А-Я]\)/.test(tr)) break;
+      inst.push(tr);
+    }
+    const joined = inst.join(" ");
+    const m = joined.match(/([А-ЯЁ][А-ЯЁ\s,]+)\s+([А-ЯЁ]+)\s*$/);
+    if (!m) return null;
+    return { left: m[1].trim(), right: m[2].trim() };
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getInstruction = (t: any): string => { const text = getText(t); const tc = t.text_content; const lines = text.split("\n"); const inst: string[] = []; for (const l of lines) { const tr = l.trim(); if (!tr) continue; if (tc?.matching_left?.length && /^[А-Я]\)/.test(tr)) break; if (tc?.sequence_items?.length && /^\d+\)/.test(tr)) break; inst.push(tr); } const joined = inst.join(" ") || text; const stripped = joined.replace(/\s+[А-ЯЁ][А-ЯЁ\s,()]+[А-ЯЁ]+(?:\s+[А-ЯЁ][А-ЯЁ\s,()]+[А-ЯЁ]+)*$/g, "").trim(); return stripped || text; };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getShort = (t: any): string => { const text = getText(t); return text.length > 80 ? text.slice(0, 80) + "..." : text; };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renderContent = (task: any, expanded: boolean) => {
     const tc = task.text_content;
+    const fipiHeaders = getFipiHeaders(task);
     return (
       <div style={{ marginTop: expanded ? "0.75rem" : 0 }}>
         <div style={{ fontSize: "var(--text-sm)", lineHeight: 1.6, color: "var(--c-text)" }}>{expanded ? getInstruction(task) : getShort(task)}</div>
         {expanded && tc?.matching_left && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginTop: "0.75rem" }}>
+          <div className="matching-grid" style={{ marginTop: "0.75rem" }}>
             <div>
-              <div style={{ fontWeight: 600, textAlign: "center", marginBottom: "0.5rem", fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>Левый столбец</div>
+              <div className="matching-col-header">{fipiHeaders?.left || "Левый столбец"}</div>
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {tc.matching_left.map((item: any, j: number) => <div key={j} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{item.label}) {item.text}</div>)}
+              {tc.matching_left.map((item: any, j: number) => <div key={j} className="matching-item">{item.label}) {item.text}</div>)}
             </div>
             <div>
-              <div style={{ fontWeight: 600, textAlign: "center", marginBottom: "0.5rem", fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>Правый столбец</div>
+              <div className="matching-col-header">{fipiHeaders?.right || "Правый столбец"}</div>
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {tc.matching_right.map((item: any, j: number) => <div key={j} style={{ fontSize: "var(--text-sm)", marginBottom: 4 }}>{item.label}) {item.text}</div>)}
+              {tc.matching_right.map((item: any, j: number) => <div key={j} className="matching-item">{item.label}) {item.text}</div>)}
             </div>
           </div>
         )}
@@ -124,7 +153,7 @@ export default function TestDetailPage() {
         </div>
 
         {viewMode === "single" && currentTask && (
-          <motion.div {...slideUp}>
+          <motion.div key={currentTask.task_id} {...slideUp}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
               <Button variant="ghost" size="sm" disabled={currentIdx === 0} onClick={() => setCurrentIdx((i) => i - 1)}>← Назад</Button>
               <span style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>{currentIdx + 1} / {test.tasks.length}</span>
@@ -140,7 +169,7 @@ export default function TestDetailPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "0.75rem", margin: "1rem 0" }}>
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   {currentTask.text_content.images.filter((p: any) => p != null && p.length > 0).map((imgPath: string, i: number) => (
-                    <div key={i} style={{ position: "relative" }}>
+                    <div key={imgPath} style={{ position: "relative", cursor: "pointer" }} onClick={() => setLightboxSrc(`/api/v1/media/images/${imgPath.split("/").pop()}`)}>
                       <img src={`/api/v1/media/images/${imgPath.split("/").pop()}`} alt={`${i + 1}`} style={{ width: "100%", display: "block", borderRadius: "var(--r-md)", border: "1px solid var(--c-border)" }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                     </div>
                   ))}
@@ -199,6 +228,13 @@ export default function TestDetailPage() {
         <p style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>Тема: {currentTask?.theme_name || currentTask?.theme_id}</p>
         <p style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>Тип: {currentTask?.exam_position ? `Тип ${currentTask.exam_position}` : "—"}{currentTask?.difficulty_level ? ` (${currentTask.difficulty_level})` : ""}</p>
       </Modal>
+
+      {/* Image lightbox */}
+      {lightboxSrc && (
+        <div onClick={() => setLightboxSrc(null)} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "zoom-out", padding: "2rem" }}>
+          <img src={lightboxSrc} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: "var(--r-md)" }} />
+        </div>
+      )}
     </div>
   );
 }

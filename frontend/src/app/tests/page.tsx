@@ -115,6 +115,8 @@ export default function TestsPage() {
     try { await api.unassignStudent(testId, studentId, auth.token); loadAssignments(testId); } catch {}
   };
 
+  if (!hydrated) return <div className="layout"><Sidebar /><div className="layout-content" style={{ display: "flex", justifyContent: "center", padding: "3rem" }}><Spinner size="lg" /></div></div>;
+  if (auth.role !== "TUTOR") return <div className="layout"><Sidebar /><PageWrapper title="Доступ запрещён"><p style={{ color: "var(--c-text-secondary)" }}>Эта страница доступна только для репетиторов.</p></PageWrapper></div>;
   if (loading) return <div className="layout"><Sidebar /><div className="layout-content" style={{ display: "flex", justifyContent: "center", padding: "3rem" }}><Spinner size="lg" /></div></div>;
 
   return (
@@ -162,7 +164,7 @@ export default function TestsPage() {
                               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                                 {assigns.map((a: Record<string, unknown>) => {
                                   const st = STATUS[a.status as string] || STATUS.ASSIGNED;
-                                  const score = a.score as number | null;
+                                  const score = (a.progress_percent ?? a.score) as number | null;
                                   return (
                                     <div key={a.student_id as string} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.5rem 0.75rem", background: "var(--c-bg)", borderRadius: "var(--r-md)" }}>
                                       <span style={{ flex: 1, fontSize: "var(--text-sm)" }}>{String(a.student_name || "Ученик")}</span>

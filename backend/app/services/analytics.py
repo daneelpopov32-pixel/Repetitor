@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Attempt, Answer, Task, Theme, TutorStudent
+from app.models import Attempt, Answer, Task, Theme, TutorStudent, User, Profile
 
 
 async def get_dashboard(db: AsyncSession, student_id: UUID) -> dict:
@@ -102,9 +102,21 @@ async def get_tutor_students_summary(db: AsyncSession, tutor_id: UUID) -> list[d
     if not student_ids:
         return []
 
-    summaries = []
+    students = []
     for sid in student_ids:
-        dash = await get_dashboard(db, sid)
-        summaries.append(dash)
+        user_result = await db.execute(select(User).where(User.id == sid))
+        user = user_result.scalar_one_or_none()
+        if not user:
+            continue
 
-    return summaries
+        profile_result = await db.execute(select(Profile).where(Profile.user_id == sid))
+        profile = profile_result.scalar_one_or_none()
+
+        students.append({
+            "id": str(user.id),
+            "email": user.email,
+            "first_name": profile.first_name if profile else "",
+            "last_name": profile.last_name if profile else "",
+        })
+
+    return students
