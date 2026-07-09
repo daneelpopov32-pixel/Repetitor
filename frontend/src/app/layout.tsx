@@ -8,6 +8,9 @@ const inter = Inter({ subsets: ["latin", "cyrillic"] });
 export const metadata: Metadata = {
   title: "Репетитор — Тесты ФИПИ",
   description: "Комбинатор тестов ФИПИ + Аналитика прогресса",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
