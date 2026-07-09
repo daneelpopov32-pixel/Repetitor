@@ -14,7 +14,7 @@ export default function PageWrapper({ children, title, actions }: PageWrapperPro
   return (
     <motion.div className="layout-content" {...slideUp}>
       {(title || actions) && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+        <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
           {title && <h1 style={{ fontSize: "var(--text-3xl)", fontWeight: 700 }}>{title}</h1>}
           {actions && <div style={{ display: "flex", gap: "0.5rem" }}>{actions}</div>}
         </div>

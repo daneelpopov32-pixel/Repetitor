@@ -22,6 +22,10 @@ const STATUS: Record<string, { label: string; variant: "default" | "success" | "
   VIEWED: { label: "Просмотрен", variant: "warning" },
   IN_PROGRESS: { label: "В работе", variant: "warning" },
   COMPLETED: { label: "Выполнен", variant: "success" },
+  new: { label: "Новый", variant: "info" },
+  viewed: { label: "Просмотрен", variant: "warning" },
+  in_progress: { label: "В работе", variant: "warning" },
+  completed: { label: "Выполнен", variant: "success" },
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -107,7 +111,18 @@ export default function TestsPage() {
     if (!auth.token) return;
     setAnswersTestId(testId);
     setAnswersStudent(name);
-    try { const data = await api.getStudentAnswers(testId, studentId, auth.token); setAnswers(data); } catch {}
+    try {
+      const data = await api.getStudentAnswers(testId, studentId, auth.token);
+      // Extract text_content.text for each answer
+      if (data?.answers) {
+        data.answers = data.answers.map((a: Record<string, unknown>) => {
+          const tc = a.text_content;
+          const text = typeof tc === "object" && tc !== null && "text" in tc ? String((tc as Record<string, unknown>).text) : "";
+          return { ...a, task_text: text };
+        });
+      }
+      setAnswers(data);
+    } catch {}
   };
 
   const doUnassign = async (testId: string, studentId: string) => {
@@ -141,19 +156,22 @@ export default function TestsPage() {
               return (
                 <motion.div key={String(testId || idx)} {...slideUp}>
                   <Card hover>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    {/* Header row */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.75rem" }}>
                       <div style={{ flex: 1, cursor: "pointer" }} onClick={() => toggleExpand(testId)}>
                         <div style={{ fontWeight: 600, marginBottom: 2 }}>{t.title || "Без названия"}</div>
                         <div style={{ fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>
                           {t.tasks_count || 0} заданий{t.time_limit_minutes ? ` • ${t.time_limit_minutes} мин` : ""} • {new Date(t.created_at).toLocaleDateString("ru-RU")}
                         </div>
                       </div>
-                      <div style={{ display: "flex", gap: "0.5rem" }} onClick={(e) => e.stopPropagation()}>
+                      <div className="test-card-actions" style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                         <Button variant="secondary" size="sm" onClick={() => router.push(`/tests/${testId}`)}>Открыть</Button>
                         <Button variant="secondary" size="sm" onClick={() => openAssign(testId)}>Назначить</Button>
                         <Button variant="ghost" size="sm" onClick={() => setDeleteId(testId)}>🗑</Button>
                       </div>
                     </div>
+
+                    {/* Expanded: assignments */}
                     <AnimatePresence>
                       {isExpanded && (
                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: "hidden" }}>
@@ -162,17 +180,26 @@ export default function TestsPage() {
                               <div style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>Нет назначенных учеников</div>
                             ) : (
                               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                                {assigns.map((a: Record<string, unknown>) => {
+                                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                                {assigns.map((a: any) => {
                                   const st = STATUS[a.status as string] || STATUS.ASSIGNED;
                                   const score = (a.progress_percent ?? a.score) as number | null;
+                                  const done = a.answers_done ?? 0;
+                                  const total = a.answers_total ?? 0;
                                   return (
-                                    <div key={a.student_id as string} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.5rem 0.75rem", background: "var(--c-bg)", borderRadius: "var(--r-md)" }}>
-                                      <span style={{ flex: 1, fontSize: "var(--text-sm)" }}>{String(a.student_name || "Ученик")}</span>
-                                      <Badge variant={st.variant}>{st.label}</Badge>
-                                      {score !== null && score !== undefined && <span style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{score}%</span>}
-                                      <div style={{ width: 80 }}><ProgressBar value={score || 0} /></div>
-                      <Button variant="ghost" size="sm" onClick={() => viewAnswers(testId, a.student_id as string, a.student_name as string)}>Ответы</Button>
-                                       <Button variant="ghost" size="sm" onClick={() => doUnassign(testId, a.student_id as string)}>✕</Button>
+                                    <div key={a.student_id as string} className="test-card-student" style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.5rem 0.75rem", background: "var(--c-bg)", borderRadius: "var(--r-md)" }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: "var(--text-sm)", fontWeight: 500 }}>{String(a.student_name || "Ученик")}</div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: 2 }}>
+                                          <Badge variant={st.variant}>{st.label}</Badge>
+                                          {score !== null && score !== undefined && (
+                                            <span style={{ fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>{done}/{total} • {score}%</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div style={{ width: 60, flexShrink: 0 }}><ProgressBar value={score || 0} /></div>
+                                      <Button variant="ghost" size="sm" onClick={() => viewAnswers(testId, a.student_id as string, a.student_name as string)}>Ответы</Button>
+                                      <Button variant="ghost" size="sm" onClick={() => doUnassign(testId, a.student_id as string)}>✕</Button>
                                     </div>
                                   );
                                 })}
@@ -193,6 +220,7 @@ export default function TestsPage() {
       {/* Assign Modal */}
       <Modal open={!!assignTestId} onClose={() => setAssignTestId(null)} title="Назначить тест" footer={<><Button variant="secondary" onClick={() => setAssignTestId(null)}>Отмена</Button><Button variant="accent" onClick={doAssign}>Назначить</Button></>}>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: 300, overflowY: "auto" }}>
+          {students.length === 0 && <div style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>Нет учеников. Сначала пригласите учеников через код.</div>}
           {students.map((s) => (
             <label key={s.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem", borderRadius: "var(--r-md)", cursor: "pointer" }}
               onMouseEnter={(e) => e.currentTarget.style.background = "var(--c-hover)"}
@@ -206,15 +234,41 @@ export default function TestsPage() {
       </Modal>
 
       {/* Answers Modal */}
-      <Modal open={!!answersTestId} onClose={() => { setAnswersTestId(null); setAnswers(null); }} title={`Ответы: ${answersStudent}`} maxWidth="600px">
+      <Modal open={!!answersTestId} onClose={() => { setAnswersTestId(null); setAnswers(null); }} title={`Ответы: ${answersStudent}`} maxWidth="640px">
         {answers ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            {/* Summary */}
+            {answers.summary && (
+              <div style={{ display: "flex", gap: "1rem", padding: "0.75rem", background: "var(--c-bg)", borderRadius: "var(--r-md)", fontSize: "var(--text-sm)" }}>
+                {answers.summary.progress_percent != null && <span>Прогресс: <b>{answers.summary.progress_percent}%</b></span>}
+                {answers.summary.auto_score != null && <span>Балл: <b>{answers.summary.auto_score}</b></span>}
+              </div>
+            )}
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
             {(answers.answers || []).map((a: any, i: number) => (
               <div key={i} style={{ padding: "0.75rem", background: "var(--c-bg)", borderRadius: "var(--r-md)" }}>
-                <div style={{ fontSize: "var(--text-xs)", color: "var(--c-text-secondary)", marginBottom: 4 }}>Задание {i + 1}</div>
-                <div style={{ fontSize: "var(--text-sm)" }}>{a.student_input || <em>Нет ответа</em>}</div>
-                {a.auto_score !== null && <Badge variant={a.auto_score > 0 ? "success" : "danger"} style={{ marginTop: 4 }}>{a.auto_score} б.</Badge>}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <span style={{ fontSize: "var(--text-xs)", color: "var(--c-text-secondary)" }}>Задание {i + 1}{a.type ? ` • ${a.type}` : ""}{a.exam_position ? ` • Тип ${a.exam_position}` : ""}</span>
+                  {a.auto_score !== null && a.auto_score !== undefined && (
+                    <Badge variant={a.auto_score > 0 ? "success" : "danger"}>{a.auto_score} б.</Badge>
+                  )}
+                </div>
+                {/* Task text */}
+                {a.task_text && (
+                  <div style={{ fontSize: "var(--text-xs)", color: "var(--c-text-secondary)", marginBottom: 4, lineHeight: 1.5 }}>
+                    {a.task_text.length > 200 ? a.task_text.slice(0, 200) + "..." : a.task_text}
+                  </div>
+                )}
+                {/* Student answer */}
+                <div style={{ fontSize: "var(--text-sm)", fontWeight: 500, padding: "0.375rem 0.5rem", background: "var(--c-surface)", borderRadius: "var(--r-sm)", border: "1px solid var(--c-border)" }}>
+                  {a.student_input || <em style={{ color: "var(--c-text-tertiary)" }}>Нет ответа</em>}
+                </div>
+                {/* AI feedback */}
+                {a.ai_feedback && (
+                  <div style={{ fontSize: "var(--text-xs)", color: "var(--c-info)", marginTop: 4, fontStyle: "italic" }}>
+                    AI: {a.ai_feedback}
+                  </div>
+                )}
               </div>
             ))}
           </div>

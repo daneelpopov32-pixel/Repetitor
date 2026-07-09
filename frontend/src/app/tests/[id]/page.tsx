@@ -148,8 +148,8 @@ export default function TestDetailPage() {
 
         {/* View toggle */}
         <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-          <Button variant={viewMode === "single" ? "primary" : "secondary"} size="sm" onClick={() => setViewMode("single")}>По одному</Button>
-          <Button variant={viewMode === "list" ? "primary" : "secondary"} size="sm" onClick={() => setViewMode("list")}>Список</Button>
+          <Button variant={viewMode === "single" ? "primary" : "secondary"} size="sm" onClick={() => setViewMode("single")} style={{ flex: 1 }}>По одному</Button>
+          <Button variant={viewMode === "list" ? "primary" : "secondary"} size="sm" onClick={() => setViewMode("list")} style={{ flex: 1 }}>Список</Button>
         </div>
 
         {viewMode === "single" && currentTask && (
@@ -197,11 +197,11 @@ export default function TestDetailPage() {
               return (
                 <motion.div key={task.task_id} {...slideUp}>
                   <Card hover onClick={() => setExpandedTasks((p) => { const n = new Set(p); n.has(task.task_id) ? n.delete(task.task_id) : n.add(task.task_id); return n; })}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                       <span style={{ fontWeight: 600, minWidth: 24, fontSize: "var(--text-sm)" }}>{idx + 1}</span>
                       <Badge variant="info">Тип {task.exam_position || "?"}</Badge>
                       <Badge variant={task.type === "TEST" ? "default" : "warning"}>{task.type}</Badge>
-                      <span style={{ flex: 1, fontSize: "var(--text-sm)", color: "var(--c-text-secondary)" }}>{getShort(task)}</span>
+                      <span style={{ flex: 1, fontSize: "var(--text-sm)", color: "var(--c-text-secondary)", minWidth: 0 }}>{getShort(task)}</span>
                       <span style={{ fontSize: "var(--text-xs)", color: "var(--c-text-tertiary)" }}>{exp ? "▲" : "▼"}</span>
                     </div>
                     <AnimatePresence>

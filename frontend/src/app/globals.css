@@ -818,6 +818,94 @@ a:hover {
 }
 
 /* ═══════════════════════════════════════════════════════
+   MOBILE NAV — bottom bar for small screens
+   ═══════════════════════════════════════════════════════ */
+
+.mobile-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--c-surface);
+  border-top: 1px solid var(--c-border);
+  z-index: 40;
+  padding: var(--sp-1) 0;
+  padding-bottom: env(safe-area-inset-bottom, var(--sp-1));
+}
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-1) var(--sp-2);
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--c-text-secondary);
+  font-family: var(--font);
+  min-width: 0;
+  flex: 1;
+  transition: color var(--t-fast);
+}
+
+.mobile-nav-item.active {
+  color: var(--c-accent);
+}
+
+.mobile-nav-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.mobile-nav-label {
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .mobile-nav {
+    display: flex;
+  }
+  .layout-content {
+    padding-bottom: calc(var(--sp-4) + 56px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MOBILE TEST CARD — stacked layout
+   ═══════════════════════════════════════════════════════ */
+
+@media (max-width: 640px) {
+  .test-card-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .test-card-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .test-card-student {
+    flex-wrap: wrap;
+  }
+  .test-card-student .btn {
+    flex: 1;
+    min-width: 0;
+  }
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-3);
+  }
+  .page-header .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
    UTILITY
    ═══════════════════════════════════════════════════════ */
 
