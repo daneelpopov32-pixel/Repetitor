@@ -55,6 +55,11 @@ def get_base_url(exam_type: str = 'EGE') -> str:
     return OGE_BASE_URL if exam_type == 'OGE' else EGE_BASE_URL
 
 
+def get_image_domain(exam_type: str = 'EGE') -> str:
+    """Return root domain for image resolution (without /bank path)."""
+    return "https://oge.fipi.ru" if exam_type == 'OGE' else "https://ege.fipi.ru"
+
+
 def get_project_id(exam_type: str = 'EGE', subject_name: str = 'История') -> str:
     if exam_type == 'OGE':
         if 'Обществознание' in subject_name:
@@ -596,7 +601,7 @@ def _extract_sequence_items(text):
     return items
 
 
-def _extract_tasks_from_html(html):
+def _extract_tasks_from_html(html, base_domain="https://ege.fipi.ru"):
     """Extract tasks from FIPI HTML with stateful image and source text binding.
 
     Uses a stateful pass through qblocks to correctly bind images and source text:
@@ -651,9 +656,9 @@ def _extract_tasks_from_html(html):
                 active_source_text = None
                 # Pure image block — set context image
                 if pics:
-                    active_context_image = _resolve_image_url(pics[0], active_files_location)
+                    active_context_image = _resolve_image_url(pics[0], active_files_location, base_domain)
                 elif img_tags:
-                    active_context_image = _resolve_image_url(img_tags[0], active_files_location)
+                    active_context_image = _resolve_image_url(img_tags[0], active_files_location, base_domain)
                 continue
 
             # Strip leading instruction phrases
@@ -667,9 +672,9 @@ def _extract_tasks_from_html(html):
                 # Only instruction or too short
                 active_source_text = None
                 if pics:
-                    active_context_image = _resolve_image_url(pics[0], active_files_location)
+                    active_context_image = _resolve_image_url(pics[0], active_files_location, base_domain)
                 elif img_tags:
-                    active_context_image = _resolve_image_url(img_tags[0], active_files_location)
+                    active_context_image = _resolve_image_url(img_tags[0], active_files_location, base_domain)
             continue
 
         # Task block (has form with guid)
@@ -687,12 +692,12 @@ def _extract_tasks_from_html(html):
         own_images = []
         qb_str = str(qb)
         for m in re.finditer(r"ShowPictureQ\w*\('([^']+)'\)", qb_str):
-            own_images.append(_resolve_image_url(m.group(1), active_files_location))
+            own_images.append(_resolve_image_url(m.group(1), active_files_location, base_domain))
 
         # Also check <img> tags in cell (may exist alongside ShowPictureQ)
         cell_imgs = [img.get("src", "") for img in cell.find_all("img") if img.get("src")]
         for ci in cell_imgs:
-            resolved = _resolve_image_url(ci)
+            resolved = _resolve_image_url(ci, base_domain=base_domain)
             if resolved not in own_images:
                 own_images.append(resolved)
 
@@ -761,20 +766,20 @@ def _extract_tasks_from_html(html):
     return tasks
 
 
-def _resolve_image_url(img: str, files_location: str = "../../") -> str:
+def _resolve_image_url(img: str, files_location: str = "../../", base_domain: str = "https://ege.fipi.ru") -> str:
     """Resolve an image path to a full HTTPS URL using files_location from HTML."""
     if img.startswith("../../") or img.startswith("docs/") or img.startswith("http"):
         # Already a relative or absolute path — resolve from base
         if img.startswith("../../"):
-            img = f"https://ege.fipi.ru/{img[6:]}"
+            img = f"{base_domain}/{img[6:]}"
         elif img.startswith("docs/"):
-            img = f"https://ege.fipi.ru/{img}"
+            img = f"{base_domain}/{img}"
         return img
 
     # Bare filename (xs3docsrc... or xs3qstsrc...) — use files_location from HTML
     # files_location is like "../../docs/{project_id}/docs/{guid}/"
     # or "../../docs/{project_id}/questions/{guid}(copyN)/"
-    base = f"https://ege.fipi.ru/{files_location.lstrip('../../')}" if files_location.startswith("../../") else f"https://ege.fipi.ru/{files_location}"
+    base = f"{base_domain}/{files_location.lstrip('../../')}" if files_location.startswith("../../") else f"{base_domain}/{files_location}"
     return f"{base}{img}"
 
 
@@ -829,7 +834,7 @@ def _fetch_tasks_for_theme(theme_code, needed_count=None, task_type=None, exam_t
                 headers=HEADERS,
             )
             html = resp.content.decode("windows-1251", errors="replace")
-            page_tasks = _extract_tasks_from_html(html)
+            page_tasks = _extract_tasks_from_html(html, base_domain=get_image_domain(exam_type))
 
             if not page_tasks:
                 break  # no more tasks on this theme
@@ -1219,7 +1224,7 @@ def _sync_images_from_full_list(max_pages=200, exam_type='EGE', subject_name='И
                     headers=HEADERS,
                 )
                 html = resp.content.decode("windows-1251", errors="replace")
-                page_tasks = _extract_tasks_from_html(html)
+                page_tasks = _extract_tasks_from_html(html, base_domain=get_image_domain(exam_type))
 
                 if not page_tasks:
                     consecutive_empty += 1
@@ -1381,7 +1386,7 @@ def _sync_tasks_from_full_list(max_pages=200, exam_type='EGE', subject_name='И�
                     headers=HEADERS,
                 )
                 html = resp.content.decode("windows-1251", errors="replace")
-                page_tasks = _extract_tasks_from_html(html)
+                page_tasks = _extract_tasks_from_html(html, base_domain=get_image_domain(exam_type))
 
                 if not page_tasks:
                     consecutive_empty += 1
