@@ -21,10 +21,13 @@ router = APIRouter(prefix="/fipi", tags=["FIPI"])
 
 class SyncCodifierRequest(BaseModel):
     subject_name: str = "История"
+    exam_type: str = "EGE"
 
 
 class SyncThemeRequest(BaseModel):
     theme_code: str
+    exam_type: str = "EGE"
+    subject_name: str = "История"
 
 
 class CreateTestAsyncRequest(BaseModel):
@@ -43,7 +46,7 @@ async def sync_codifier(
 ):
     """Trigger one-time codifier sync from FIPI."""
     from app.tasks.fipi_tasks import sync_codifier
-    task = sync_codifier.delay(data.subject_name)
+    task = sync_codifier.delay(data.subject_name, exam_type=data.exam_type)
     return {"task_id": task.id, "status": "started"}
 
 
@@ -54,7 +57,7 @@ async def sync_theme(
 ):
     """Trigger full sync for a single theme (fetches ALL tasks from FIPI)."""
     from app.tasks.fipi_tasks import sync_theme_full
-    task = sync_theme_full.delay(data.theme_code)
+    task = sync_theme_full.delay(data.theme_code, exam_type=data.exam_type, subject_name=data.subject_name)
     return {"task_id": task.id, "status": "started"}
 
 
@@ -65,7 +68,7 @@ async def sync_subject(
 ):
     """Trigger full sync for all themes of a subject."""
     from app.tasks.fipi_tasks import sync_subject_full
-    task = sync_subject_full.delay(data.subject_name)
+    task = sync_subject_full.delay(data.subject_name, exam_type=data.exam_type)
     return {"task_id": task.id, "status": "started"}
 
 
@@ -111,18 +114,59 @@ async def generate_ege(
     return result
 
 
-@router.post("/sync-images")
-async def sync_images(
+class GenerateOGERequest(BaseModel):
+    subject_name: str = "История"
+    title: str | None = None
+    time_limit_minutes: int | None = None
+
+
+@router.post("/generate-oge")
+async def generate_oge(
+    data: GenerateOGERequest,
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(require_role("TUTOR")),
 ):
-    """Sync images from FIPI full list (no theme filter required).
+    """Generate a complete OGE variant from local DB."""
+    from app.services.oge_generator import generate_oge_variant
 
-    FIPI blocks ShowPicture/ShowPictureQ when theme=X. is used.
-    This endpoint iterates through the full list to get images
-    and matches them to existing tasks by GUID.
-    """
+    result = await generate_oge_variant(
+        db=db,
+        tutor_id=user.id,
+        subject_name=data.subject_name,
+        title=data.title,
+        time_limit_minutes=data.time_limit_minutes,
+    )
+    return result
+
+
+class SyncImagesRequest(BaseModel):
+    exam_type: str = "EGE"
+    subject_name: str = "История"
+
+
+@router.post("/sync-images")
+async def sync_images(
+    data: SyncImagesRequest | None = None,
+    user: User = Depends(require_role("TUTOR")),
+):
+    """Sync images from FIPI full list (no theme filter required)."""
     from app.tasks.fipi_tasks import sync_images_full_list
-    task = sync_images_full_list.delay()
+    exam_type = data.exam_type if data else "EGE"
+    subject_name = data.subject_name if data else "История"
+    task = sync_images_full_list.delay(exam_type=exam_type, subject_name=subject_name)
+    return {"task_id": task.id, "status": "started"}
+
+
+@router.post("/sync-tasks")
+async def sync_tasks(
+    data: SyncImagesRequest | None = None,
+    user: User = Depends(require_role("TUTOR")),
+):
+    """Sync tasks from FIPI full list (no theme filter required)."""
+    from app.tasks.fipi_tasks import sync_tasks_full_list
+    exam_type = data.exam_type if data else "EGE"
+    subject_name = data.subject_name if data else "История"
+    task = sync_tasks_full_list.delay(exam_type=exam_type, subject_name=subject_name)
     return {"task_id": task.id, "status": "started"}
 
 

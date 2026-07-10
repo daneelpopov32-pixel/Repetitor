@@ -26,6 +26,7 @@ export default function ContentPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [subjects, setSubjects] = useState<any[]>([]);
   const [selectedSubject, setSelectedSubject] = useState("");
+  const [examType, setExamType] = useState<"EGE" | "OGE">("EGE");
   const [themeTree, setThemeTree] = useState<ThemeNode[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskTotal, setTaskTotal] = useState(0);
@@ -139,10 +140,10 @@ export default function ContentPage() {
         title="Контент"
         actions={
           <div className="content-sync-actions">
-            <Button variant="accent" size="sm" onClick={() => syncAction(() => api.syncCodifier(subjects.find((s) => s.id === selectedSubject)?.name || "История", auth.token!), "Кодификатор синхронизирован")}>⟳ Кодификатор</Button>
-            <Button variant="secondary" size="sm" onClick={() => { const c = prompt("Код темы (напр. 8.):"); if (c) syncAction(() => api.syncTheme(c, auth.token!), `Тема ${c} синхронизирована`); }}>⟳ Тему</Button>
-            <Button variant="secondary" size="sm" onClick={() => { if (confirm("Синхронизировать весь предмет?")) syncAction(() => api.syncSubject(subjects.find((s) => s.id === selectedSubject)?.name || "История", auth.token!), "Предмет синхронизирован"); }}>⟳ Весь предмет</Button>
-            <Button variant="secondary" size="sm" onClick={() => { if (confirm("Синхронизировать изображения из полного списка FIPI? Это займёт время.")) syncAction(() => api.syncImages(auth.token!), "Синхронизация изображений запущена"); }}>🖼 Изображения</Button>
+            <Button variant="accent" size="sm" onClick={() => { const subj = subjects.find((s) => s.id === selectedSubject); syncAction(() => api.syncCodifier(subj?.name || "История", auth.token!, examType), "Кодификатор синхронизирован"); }}>⟳ Кодификатор</Button>
+            <Button variant="secondary" size="sm" onClick={() => { const c = prompt("Код темы (напр. 8. или 1.1):"); if (c) { const subj = subjects.find((s) => s.id === selectedSubject); syncAction(() => api.syncTheme(c, auth.token!, examType, subj?.name || "История"), `Тема ${c} синхронизирована`); } }}>⟳ Тему</Button>
+            <Button variant="secondary" size="sm" onClick={() => { if (confirm("Синхронизировать весь предмет?")) { const subj = subjects.find((s) => s.id === selectedSubject); syncAction(() => api.syncSubject(subj?.name || "История", auth.token!, examType), "Предмет синхронизирован"); } }}>⟳ Весь предмет</Button>
+            <Button variant="secondary" size="sm" onClick={() => { if (confirm("Синхронизировать изображения из полного списка FIPI?")) { const subj = subjects.find((s) => s.id === selectedSubject); syncAction(() => api.syncImages(auth.token!, examType, subj?.name || "История"), "Синхронизация изображений запущена"); } }}>🖼 Изображения</Button>
           </div>
         }
       >
@@ -181,6 +182,18 @@ export default function ContentPage() {
           <div className="content-grid" style={{ display: "grid", gap: "1rem" }}>
             {/* Left: subjects */}
             <Card>
+              {/* EGE/OGE tabs */}
+              <div style={{ display: "flex", gap: 0, marginBottom: "0.75rem", borderRadius: "var(--r-md)", overflow: "hidden", border: "1px solid var(--c-border)" }}>
+                {(["EGE", "OGE"] as const).map((et) => (
+                  <button key={et} onClick={() => { setExamType(et); setSelectedSubject(""); setSelectedTheme(""); }}
+                    style={{ flex: 1, padding: "0.4rem 0.5rem", border: "none", cursor: "pointer", fontSize: "var(--text-xs)", fontWeight: 600,
+                      background: examType === et ? "var(--c-primary)" : "var(--c-bg-secondary)",
+                      color: examType === et ? "white" : "var(--c-text-secondary)" }}>
+                    {et === "EGE" ? "ЕГЭ" : "ОГЭ"}
+                  </button>
+                ))}
+              </div>
+
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
                 <h3 style={{ fontSize: "var(--text-lg)", fontWeight: 600 }}>Предметы</h3>
                 <Button variant="ghost" size="sm" onClick={() => setShowAddSubject(true)}>+</Button>
@@ -197,7 +210,7 @@ export default function ContentPage() {
                 )}
               </AnimatePresence>
               <div className="content-subjects-scroll">
-                {subjects.map((s) => (
+                {subjects.filter((s) => s.exam_type === examType).map((s) => (
                   <div
                     key={s.id}
                     onClick={() => setSelectedSubject(s.id)}
@@ -211,6 +224,11 @@ export default function ContentPage() {
                     {s.name}
                   </div>
                 ))}
+                {subjects.filter((s) => s.exam_type === examType).length === 0 && (
+                  <div style={{ fontSize: "var(--text-sm)", color: "var(--c-text-tertiary)", padding: "0.5rem" }}>
+                    {examType === "OGE" ? "Нет предметов ОГЭ. Нажмите + для добавления." : "Нет предметов"}
+                  </div>
+                )}
               </div>
             </Card>
 

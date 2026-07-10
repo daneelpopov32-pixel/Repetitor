@@ -27,10 +27,10 @@ async def create_subject(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_role("TUTOR")),
 ):
-    subject = Subject(name=data.name)
+    subject = Subject(name=data.name, exam_type=data.exam_type)
     db.add(subject)
     await db.commit()
-    return {"id": subject.id, "name": subject.name}
+    return {"id": subject.id, "name": subject.name, "exam_type": subject.exam_type}
 
 
 @router.get("/themes/tree")

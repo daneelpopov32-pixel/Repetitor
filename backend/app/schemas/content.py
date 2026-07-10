@@ -18,3 +18,4 @@ class BulkImportResponse(BaseModel):
 
 class SubjectCreate(BaseModel):
     name: str
+    exam_type: str = "EGE"

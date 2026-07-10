@@ -36,4 +36,4 @@ async def get_theme_tree(db: AsyncSession, subject_id: UUID) -> dict:
 async def get_subjects(db: AsyncSession) -> list[dict]:
     result = await db.execute(select(Subject))
     subjects = result.scalars().all()
-    return [{"id": s.id, "name": s.name} for s in subjects]
+    return [{"id": s.id, "name": s.name, "exam_type": s.exam_type} for s in subjects]

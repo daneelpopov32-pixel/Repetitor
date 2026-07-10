@@ -83,11 +83,14 @@ async def fipi_task_counts(
             return cached_data
 
     # Import codifier mapping
-    from app.tasks.fipi_tasks import SUBJECT_CODIFIERS, FIPI_PROJECT_ID, _extract_tasks_from_html, HEADERS, BASE_URL
+    from app.tasks.fipi_tasks import get_codifier, _extract_tasks_from_html, HEADERS, get_base_url, get_project_id
 
-    codifier = SUBJECT_CODIFIERS.get(subject_name)
+    codifier = get_codifier(subject_name)
     if not codifier:
         return []
+
+    base_url = get_base_url()
+    project_id = get_project_id()
 
     # Get themes from DB for this subject
     themes_result = await db.execute(
@@ -104,11 +107,11 @@ async def fipi_task_counts(
         try:
             async with httpx.AsyncClient(timeout=15, verify=False) as client:
                 resp = await client.post(
-                    f"{BASE_URL}/questions.php",
+                    f"{base_url}/questions.php",
                     data={
                         "search": "1",
                         "pagesize": "10",
-                        "proj": FIPI_PROJECT_ID,
+                        "proj": project_id,
                         "theme": fipi_code,
                         "page": "1",
                     },

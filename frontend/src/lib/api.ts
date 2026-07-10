@@ -118,29 +118,36 @@ export const api = {
     return request<any>(`/content/tasks?${q.toString()}`, { token });
   },
 
-  syncCodifier: (subjectName: string, token: string) =>
+  syncCodifier: (subjectName: string, token: string, examType: string = "EGE") =>
     request<any>("/fipi/sync-codifier", {
       method: "POST",
-      body: JSON.stringify({ subject_name: subjectName }),
+      body: JSON.stringify({ subject_name: subjectName, exam_type: examType }),
       token,
     }),
-  syncTheme: (themeCode: string, token: string) =>
+  syncTheme: (themeCode: string, token: string, examType: string = "EGE", subjectName: string = "История") =>
     request<any>("/fipi/sync-theme", {
       method: "POST",
-      body: JSON.stringify({ theme_code: themeCode }),
+      body: JSON.stringify({ theme_code: themeCode, exam_type: examType, subject_name: subjectName }),
       token,
     }),
-  syncSubject: (subjectName: string, token: string) =>
+  syncSubject: (subjectName: string, token: string, examType: string = "EGE") =>
     request<any>("/fipi/sync-subject", {
       method: "POST",
-      body: JSON.stringify({ subject_name: subjectName }),
+      body: JSON.stringify({ subject_name: subjectName, exam_type: examType }),
       token,
     }),
   getSyncStatus: (token: string) =>
     request<any[]>("/fipi/sync-status", { token }),
-  syncImages: (token: string) =>
+  syncImages: (token: string, examType: string = "EGE", subjectName: string = "История") =>
     request<any>("/fipi/sync-images", {
       method: "POST",
+      body: JSON.stringify({ exam_type: examType, subject_name: subjectName }),
+      token,
+    }),
+  syncTasks: (token: string, examType: string = "EGE", subjectName: string = "История") =>
+    request<any>("/fipi/sync-tasks", {
+      method: "POST",
+      body: JSON.stringify({ exam_type: examType, subject_name: subjectName }),
       token,
     }),
   createTestAsync: (data: { title: string; theme_codes: string[]; count_per_theme: number; task_type: string; time_limit_minutes?: number; exam_positions?: number[] }, token: string) =>
@@ -151,6 +158,12 @@ export const api = {
     }),
   generateEGE: (data: { title?: string; time_limit_minutes?: number }, token: string) =>
     request<any>("/fipi/generate-ege", {
+      method: "POST",
+      body: JSON.stringify(data),
+      token,
+    }),
+  generateOGE: (data: { subject_name?: string; title?: string; time_limit_minutes?: number }, token: string) =>
+    request<any>("/fipi/generate-oge", {
       method: "POST",
       body: JSON.stringify(data),
       token,

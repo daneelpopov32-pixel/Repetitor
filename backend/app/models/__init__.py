@@ -89,6 +89,7 @@ class Subject(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=gen_uuid)
     tenant_id = Column(UUID(as_uuid=True))
     name = Column(String(100), nullable=False)
+    exam_type = Column(String(10), nullable=False, default="EGE")  # "EGE" или "OGE"
 
 
 class Theme(Base):
