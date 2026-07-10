@@ -857,10 +857,11 @@ def _save_tasks_to_db(db, theme, fetched_tasks):
     from app.services.kim_mapping import classify_task
     from app.services.image_downloader import download_task_images
 
-    # Pre-load existing GUIDs for global dedup (not per-theme)
+    # Pre-load existing GUIDs for dedup within this subject only
     existing_guids = set()
     for row in db.query(Task.metadata_["fipi_guid"].as_string()).filter(
-        Task.metadata_["fipi_guid"].isnot(None)
+        Task.metadata_["fipi_guid"].isnot(None),
+        Task.subject_id == theme.subject_id,
     ).all():
         if row[0]:
             existing_guids.add(row[0].upper())
@@ -1148,7 +1149,7 @@ def _sync_images_from_full_list(max_pages=200, exam_type='EGE', subject_name='И
     import time
     import hashlib
     import json
-    from app.models import Task
+    from app.models import Task, Subject
     from app.services.image_downloader import download_task_images
 
     def compute_text_hash(text_content: dict) -> str:
@@ -1161,9 +1162,18 @@ def _sync_images_from_full_list(max_pages=200, exam_type='EGE', subject_name='И
 
     db = _get_sync_session()
     try:
+        # Find subject to filter tasks by subject_id (ISOLATION per bank)
+        subject = db.query(Subject).filter(
+            Subject.name == subject_name, Subject.exam_type == exam_type
+        ).first()
+        if not subject:
+            return {"error": f"Subject {subject_name} ({exam_type}) not found"}
+
         # Build TWO mappings: GUID → task AND text_hash → task
+        # CRITICAL: filter by subject_id to avoid cross-bank contamination
         all_tasks = db.query(Task).filter(
-            Task.text_content.isnot(None)
+            Task.text_content.isnot(None),
+            Task.subject_id == subject.id,
         ).all()
 
         guid_to_task = {}
@@ -1328,14 +1338,23 @@ def _sync_tasks_from_full_list(max_pages=200, exam_type='EGE', subject_name='И�
 
     db = _get_sync_session()
     try:
-        # Build theme lookup: fipi_code → Theme
-        themes = db.query(Theme).all()
+        # Find subject to filter tasks by subject_id (ISOLATION per bank)
+        from app.models import Subject
+        subject = db.query(Subject).filter(
+            Subject.name == subject_name, Subject.exam_type == exam_type
+        ).first()
+        if not subject:
+            return {"error": f"Subject {subject_name} ({exam_type}) not found"}
+
+        # Build theme lookup: fipi_code → Theme (filtered by subject)
+        themes = db.query(Theme).filter(Theme.subject_id == subject.id).all()
         code_to_theme = {t.fipi_code: t for t in themes}
 
-        # Pre-load existing GUIDs for global dedup
+        # Pre-load existing GUIDs for dedup within this subject only
         existing_guids = set()
         for row in db.query(Task.metadata_["fipi_guid"].as_string()).filter(
-            Task.metadata_["fipi_guid"].isnot(None)
+            Task.metadata_["fipi_guid"].isnot(None),
+            Task.subject_id == subject.id,
         ).all():
             if row[0]:
                 existing_guids.add(row[0].upper())
