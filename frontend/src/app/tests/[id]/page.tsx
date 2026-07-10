@@ -78,7 +78,7 @@ export default function TestDetailPage() {
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const getInstruction = (t: any): string => { const text = getText(t); const tc = t.text_content; const lines = text.split("\n"); const inst: string[] = []; for (const l of lines) { const tr = l.trim(); if (!tr) continue; if (tc?.matching_left?.length && /^[А-Я]\)/.test(tr)) break; if (tc?.sequence_items?.length && /^\d+\)/.test(tr)) break; inst.push(tr); } const joined = inst.join(" ") || text; const stripped = joined.replace(/\s+[А-ЯЁ][А-ЯЁ\s,()]+[А-ЯЁ]+(?:\s+[А-ЯЁ][А-ЯЁ\s,()]+[А-ЯЁ]+)*$/g, "").trim(); return stripped || text; };
+  const getInstruction = (t: any): string => { const text = getText(t); const tc = t.text_content; const lines = text.split("\n"); const inst: string[] = []; for (const l of lines) { const tr = l.trim(); if (!tr) continue; if (tc?.matching_left?.length && /^[А-Я]\)/.test(tr)) break; if (tc?.sequence_items?.length && /^\d+\)/.test(tr)) break; inst.push(tr); } const joined = inst.join("\n") || text; return joined.trim(); };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getShort = (t: any): string => { const text = getText(t); return text.length > 80 ? text.slice(0, 80) + "..." : text; };
 
@@ -88,7 +88,7 @@ export default function TestDetailPage() {
     const fipiHeaders = getFipiHeaders(task);
     return (
       <div style={{ marginTop: expanded ? "0.75rem" : 0 }}>
-        <div style={{ fontSize: "var(--text-sm)", lineHeight: 1.6, color: "var(--c-text)" }}>{expanded ? getInstruction(task) : getShort(task)}</div>
+        <div style={{ fontSize: "var(--text-sm)", lineHeight: 1.6, color: "var(--c-text)", whiteSpace: "pre-wrap" }}>{expanded ? getInstruction(task) : getShort(task)}</div>
         {expanded && tc?.matching_left && (
           <div className="matching-grid" style={{ marginTop: "0.75rem" }}>
             <div>

@@ -117,7 +117,7 @@ export default function AttemptPage() {
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const getInstruction = (t: any): string => { const text = getText(t); const tc = t.text_content; const lines = text.split("\n"); const inst: string[] = []; for (const l of lines) { const tr = l.trim(); if (!tr) continue; if (tc?.matching_left?.length && /^[А-Я]\)/.test(tr)) break; if (tc?.sequence_items?.length && /^\d+\)/.test(tr)) break; inst.push(tr); } const joined = inst.join(" ") || text; const stripped = joined.replace(/\s+[А-ЯЁ][А-ЯЁ\s,()]+[А-ЯЁ]+(?:\s+[А-ЯЁ][А-ЯЁ\s,()]+[А-ЯЁ]+)*$/g, "").trim(); return stripped || text; };
+  const getInstruction = (t: any): string => { const text = getText(t); const tc = t.text_content; const lines = text.split("\n"); const inst: string[] = []; for (const l of lines) { const tr = l.trim(); if (!tr) continue; if (tc?.matching_left?.length && /^[А-Я]\)/.test(tr)) break; if (tc?.sequence_items?.length && /^\d+\)/.test(tr)) break; inst.push(tr); } const joined = inst.join("\n") || text; return joined.trim(); };
 
   // Read source text directly from text_content.source_text
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -207,7 +207,7 @@ export default function AttemptPage() {
             )}
 
             {/* Instruction — larger text for exam readability */}
-            <p style={{ fontSize: "var(--text-lg)", lineHeight: 1.7, marginBottom: "1rem", fontWeight: 500 }}>{getInstruction(task)}</p>
+            <p style={{ fontSize: "var(--text-lg)", lineHeight: 1.7, marginBottom: "1rem", fontWeight: 500, whiteSpace: "pre-wrap" }}>{getInstruction(task)}</p>
 
             {/* Matching content */}
             {isMatching && (
