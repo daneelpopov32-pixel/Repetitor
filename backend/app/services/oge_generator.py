@@ -7,9 +7,10 @@ following the official FIPI structure for OGE History and Social Studies.
 import random
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Task, Theme, Test, TestTask
+from app.models import Task, Theme, Test, TestTask, Subject
 from app.services.oge_template import (
     OGE_HISTORY_TEMPLATE, OGE_HISTORY_MAX_PRIMARY_POINTS,
     OGE_HISTORY_EXAM_TIME_MINUTES, OGE_HISTORY_TOTAL_TASKS,
@@ -56,12 +57,21 @@ async def generate_oge_variant(
     warnings = []
     used_task_ids = set()
 
+    # Find subject to filter tasks
+    subject = (await db.execute(
+        select(Subject).filter(Subject.name == subject_name, Subject.exam_type == "OGE")
+    )).scalar_one_or_none()
+    if not subject:
+        return {"error": f"Предмет '{subject_name}' (ОГЭ) не найден в базе"}
+
     for position in template:
         pos_num = position["position"]
         allowed_types = position["allowed_types"]
 
-        from sqlalchemy import select
-        query = select(Task).where(Task.type.in_(allowed_types))
+        query = select(Task).where(
+            Task.type.in_(allowed_types),
+            Task.subject_id == subject.id,
+        )
 
         # For essay tasks, require fipi_criteria
         if "ESSAY" in allowed_types:
