@@ -49,8 +49,7 @@ export default function NewTestPage() {
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   // Quick generation state
-  const [quickStep, setQuickStep] = useState<"idle" | "pick_subject">("idle");
-  const [quickExamType, setQuickExamType] = useState<"EGE" | "OGE">("EGE");
+  const [quickSubject, setQuickSubject] = useState("");
   const [quickLoading, setQuickLoading] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [quickResult, setQuickResult] = useState<any>(null);
@@ -121,17 +120,17 @@ export default function NewTestPage() {
   const subjectList = subjects.filter((s) => s.exam_type === examType);
 
   // Quick generation flow
-  const handleQuickStart = (type: "EGE" | "OGE") => {
-    setQuickExamType(type); setQuickStep("pick_subject"); setQuickResult(null); setQuickError("");
-  };
+  const quickSubjects = subjects.filter((s) => s.exam_type === "EGE" || s.exam_type === "OGE");
+  // Unique subject names (История, Обществознание)
+  const quickSubjectNames = [...new Set(quickSubjects.map((s) => s.name))];
 
-  const handleQuickPickSubject = async (subjectName: string) => {
+  const handleQuickGenerate = async (examType: "EGE" | "OGE") => {
     setQuickLoading(true); setQuickError(""); setQuickResult(null);
     try {
-      const r = quickExamType === "EGE"
+      const r = examType === "EGE"
         ? await api.generateEGE({}, auth.token!)
-        : await api.generateOGE({ subject_name: subjectName }, auth.token!);
-      setQuickResult(r); setQuickStep("idle");
+        : await api.generateOGE({ subject_name: quickSubject }, auth.token!);
+      setQuickResult(r);
     } catch (e: unknown) { setQuickError(e instanceof Error ? e.message : "Ошибка"); }
     setQuickLoading(false);
   };
@@ -195,30 +194,39 @@ export default function NewTestPage() {
             <h3 style={{ fontSize: "var(--text-lg)", fontWeight: 600, marginBottom: "0.5rem" }}>Быстрая генерация</h3>
             <p style={{ fontSize: "var(--text-sm)", color: "var(--c-text-secondary)", marginBottom: "1rem" }}>Автоматический подбор варианта по КИМам</p>
 
-            {quickStep === "pick_subject" && (
-              <div style={{ marginBottom: "0.75rem" }}>
-                <div style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--c-text-secondary)", marginBottom: 6, textTransform: "uppercase" }}>Выберите предмет</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {subjects.filter((s) => s.exam_type === quickExamType).map((s) => (
-                    <motion.button key={s.id} whileTap={{ scale: 0.97 }} onClick={() => handleQuickPickSubject(s.name)} disabled={quickLoading}
-                      style={{ padding: "6px 16px", borderRadius: "var(--r-md)", border: "1px solid var(--c-border)", cursor: "pointer", fontWeight: 500, fontSize: "var(--text-sm)", background: "var(--c-surface)" }}>
-                      {s.name}
-                    </motion.button>
-                  ))}
+            {/* Шаг 1: Выбор предмета */}
+            <div style={{ marginBottom: quickSubject ? "0.75rem" : 0 }}>
+              <div style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--c-text-secondary)", marginBottom: 6, textTransform: "uppercase" }}>Предмет</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {quickSubjectNames.map((name) => (
+                  <motion.button key={name} whileTap={{ scale: 0.97 }}
+                    style={{ padding: "6px 16px", borderRadius: "var(--r-md)", border: "1px solid", cursor: "pointer", fontWeight: 500, fontSize: "var(--text-sm)",
+                      background: quickSubject === name ? "var(--c-primary)" : "var(--c-surface)",
+                      color: quickSubject === name ? "white" : "var(--c-text)",
+                      borderColor: quickSubject === name ? "var(--c-primary)" : "var(--c-border)" }}
+                    onClick={() => { setQuickSubject(name); setQuickResult(null); setQuickError(""); }}
+                    disabled={quickLoading}>
+                    {name}
+                  </motion.button>
+                ))}
+              </div>
+            </div>
+
+            {/* Шаг 2: Кнопки генерации (после выбора предмета) */}
+            {quickSubject && (
+              <div>
+                <div style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--c-text-secondary)", marginBottom: 6, textTransform: "uppercase" }}>Экзамен</div>
+                {quickError && <div style={{ padding: "0.75rem", background: "var(--c-danger-bg)", borderRadius: "var(--r-md)", color: "var(--c-danger)", marginBottom: "0.75rem", fontSize: "var(--text-sm)" }}>{quickError}</div>}
+                {quickResult && <div style={{ padding: "0.75rem", background: "var(--c-success-bg)", borderRadius: "var(--r-md)", color: "#166534", marginBottom: "0.75rem", fontSize: "var(--text-sm)" }}>
+                  <strong>{quickResult.title}</strong> {"\u2014"} {quickResult.tasks_count} заданий{quickResult.max_points ? `, ${quickResult.max_points} баллов` : ""}
+                  {" "}<a href={`/tests/${quickResult.test_id}`}>Открыть {"\u2192"}</a>
+                </div>}
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <Button variant="accent" onClick={() => handleQuickGenerate("EGE")} loading={quickLoading}>Сгенерировать ЕГЭ</Button>
+                  <Button variant="secondary" onClick={() => handleQuickGenerate("OGE")} loading={quickLoading}>Сгенерировать ОГЭ</Button>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setQuickStep("idle")} style={{ marginTop: 6 }}>Отмена</Button>
               </div>
             )}
-
-            {quickError && <div style={{ padding: "0.75rem", background: "var(--c-danger-bg)", borderRadius: "var(--r-md)", color: "var(--c-danger)", marginBottom: "0.75rem", fontSize: "var(--text-sm)" }}>{quickError}</div>}
-            {quickResult && <div style={{ padding: "0.75rem", background: "var(--c-success-bg)", borderRadius: "var(--r-md)", color: "#166534", marginBottom: "0.75rem", fontSize: "var(--text-sm)" }}>
-              <strong>{quickResult.title}</strong> {"\u2014"} {quickResult.tasks_count} заданий{quickResult.max_points ? `, ${quickResult.max_points} баллов` : ""}
-              {" "}<a href={`/tests/${quickResult.test_id}`}>Открыть {"\u2192"}</a>
-            </div>}
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <Button variant="accent" onClick={() => handleQuickStart("EGE")} loading={quickLoading}>Сгенерировать ЕГЭ</Button>
-              <Button variant="secondary" onClick={() => handleQuickStart("OGE")} loading={quickLoading}>Сгенерировать ОГЭ</Button>
-            </div>
           </Card>
 
           {/* === БЛОК 2: Создать тест === */}
